@@ -2,23 +2,31 @@ import { createNodeMiddleware } from '@octokit/webhooks';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import http from 'http';
-import { App, Octokit } from 'octokit';
-import { checkForMergeConflicts } from './utils.js';
+import { App as GitHubApp } from '@octokit/app';
+import {
+  GetResponseTypeFromEndpointMethod,
+  GetResponseDataTypeFromEndpointMethod,
+} from '@octokit/types';
+import { Octokit } from '@octokit/rest';
+import { checkForMergeConflicts } from './util/utils.js';
 
 // Load environment variables from .env file
 dotenv.config();
 
 // Set configured values
-const appId = process.env.APP_ID;
-const privateKeyPath = process.env.PRIVATE_KEY_PATH;
+const appId = parseInt(process.env.APP_ID || '0', 10);
+const privateKeyPath = process.env.PRIVATE_KEY_PATH || '';
 const privateKey = fs.readFileSync(privateKeyPath, 'utf8');
-const secret = process.env.WEBHOOK_SECRET;
+const secret = process.env.WEBHOOK_SECRET || '';
 const enterpriseHostname = process.env.ENTERPRISE_HOSTNAME;
-const messageForNewPRs = fs.readFileSync('./message.md', 'utf8');
-const messageForNewLabel = fs.readFileSync('./messageNewLabel.md', 'utf8');
+const messageForNewPRs = fs.readFileSync('./src/messages/message.md', 'utf8');
+const messageForNewLabel = fs.readFileSync(
+  './src/messages/messageNewLabel.md',
+  'utf8'
+);
 
 // Create an authenticated Octokit client authenticated as a GitHub App
-const app = new App({
+const app = new GitHubApp({
   appId,
   privateKey,
   webhooks: {
@@ -64,9 +72,9 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
 app.webhooks.on('pull_request.labeled', async ({ octokit, payload }) => {
   try {
     if (!payload.sender.login.includes('bot')) {
-      console.log(`Received a label event for #${payload.label.name}`);
+      console.log(`Received a label event for #${payload?.label?.name}`);
 
-      await octokit.rest.issues.createComment({
+      await octokit.issues.createComment({
         owner: payload.repository.owner.login,
         repo: payload.repository.name,
         issue_number: payload.pull_request.number,
@@ -118,8 +126,8 @@ app.webhooks.on('push', async ({ octokit, payload }) => {
   if (payload.ref === 'refs/heads/main') {
     console.log('Push event received for main branch');
     try {
-      const { data: pullRequests } = await octokit.rest.pulls.list({
-        owner: payload.repository.owner.name,
+      const { data: pullRequests } = await octokit.pulls.list({
+        owner: payload.repository?.owner?.name || '',
         repo: payload.repository.name,
         state: 'open',
         base: 'main',
@@ -128,23 +136,23 @@ app.webhooks.on('push', async ({ octokit, payload }) => {
       pullRequests.forEach(async (pullRequest) => {
         try {
           console.log(`Merging main into PR branch ${pullRequest.head.ref}`);
-          await octokit.rest.repos.merge({
-            owner: payload.repository.owner.name,
+          await octokit.repos.merge({
+            owner: payload.repository?.owner?.name || '',
             repo: payload.repository.name,
             base: pullRequest.head.ref,
             head: 'main',
             commit_message: `Merging main into PR branch ${pullRequest.head.ref} (Automatic🚀)`,
           });
-          await octokit.rest.issues.createComment({
-            owner: payload.repository.owner.login,
+          await octokit.issues.createComment({
+            owner: payload.repository?.owner?.name || '',
             repo: payload.repository.name,
             issue_number: pullRequest.number,
             body: 'This PR has been updated with the latest changes from the main branch.✔️',
           });
         } catch (error) {
           console.log('Merge conflict detected');
-          await octokit.rest.issues.addLabels({
-            owner: payload.repository.owner.login,
+          await octokit.issues.addLabels({
+            owner: payload.repository?.owner?.name || '',
             repo: payload.repository.name,
             issue_number: pullRequest.number,
             labels: ['Merge Conflict'],
@@ -177,14 +185,14 @@ app.webhooks.on('pull_request.synchronize', async ({ octokit, payload }) => {
     );
 
     if (mergable === false) {
-      await octokit.rest.issues.addLabels({
+      await octokit.issues.addLabels({
         owner: payload.repository.owner.login,
         repo: payload.repository.name,
         issue_number: payload.pull_request.number,
         labels: ['Merge Conflict'],
       });
 
-      await octokit.rest.issues.createComment({
+      await octokit.issues.createComment({
         owner: payload.repository.owner.login,
         repo: payload.repository.name,
         issue_number: payload.pull_request.number,
@@ -197,7 +205,7 @@ app.webhooks.on('pull_request.synchronize', async ({ octokit, payload }) => {
         )
       ) {
         console.log('Removing the merge conflict label');
-        await octokit.rest.issues.removeLabel({
+        await octokit.issues.removeLabel({
           owner: payload.repository.owner.login,
           repo: payload.repository.name,
           issue_number: payload.pull_request.number,
@@ -205,7 +213,7 @@ app.webhooks.on('pull_request.synchronize', async ({ octokit, payload }) => {
         });
       }
 
-      await octokit.rest.issues.createComment({
+      await octokit.issues.createComment({
         owner: payload.repository.owner.login,
         repo: payload.repository.name,
         issue_number: payload.pull_request.number,
