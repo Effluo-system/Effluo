@@ -4,15 +4,24 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "server": "node app.js",
-    "lint": "standard"
+    "start": "node dist/app.js",
+    "build": "tsc",
+    "lint": "standard",
+    "dev": "nodemon --watch src --ext ts --exec \"node --loader ts-node/esm src/app.ts\""
   },
   "devDependencies": {
+    "@types/node": "^22.9.1",
+    "nodemon": "^3.1.7",
     "smee-client": "^2.0.1",
     "standard": "^17.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3",
     "vite": "^4.5.3"
   },
   "dependencies": {
+    "@octokit/app": "^15.1.1",
+    "@octokit/rest": "^21.0.2",
+    "@octokit/webhooks": "^13.4.1",
     "dotenv": "^16.0.3",
     "octokit": "^3.1.2"
   }
