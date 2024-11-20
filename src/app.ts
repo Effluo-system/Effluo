@@ -1,14 +1,14 @@
-import { createNodeMiddleware } from '@octokit/webhooks';
+import { createNodeMiddleware, Webhooks } from '@octokit/webhooks';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import http from 'http';
-import { App as GitHubApp } from '@octokit/app';
+import { App as GitHubApp, Octokit } from 'octokit';
 import {
   GetResponseTypeFromEndpointMethod,
   GetResponseDataTypeFromEndpointMethod,
 } from '@octokit/types';
-import { Octokit } from '@octokit/rest';
 import { checkForMergeConflicts } from './util/utils.js';
+import type { CustomError } from './types/common.d.ts';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -58,12 +58,13 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
       body: messageForNewPRs,
     });
   } catch (error) {
-    if (error.response) {
+    const customError = error as CustomError;
+    if (customError.response) {
       console.error(
-        `Error! Status: ${error.response.status}. Message: ${error.response.data.message}`
+        `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
       );
     } else {
-      console.error(error);
+      console.error(customError.message || 'An unknown error occurred');
     }
   }
 });
@@ -74,7 +75,7 @@ app.webhooks.on('pull_request.labeled', async ({ octokit, payload }) => {
     if (!payload.sender.login.includes('bot')) {
       console.log(`Received a label event for #${payload?.label?.name}`);
 
-      await octokit.issues.createComment({
+      await octokit.rest.issues.createComment({
         owner: payload.repository.owner.login,
         repo: payload.repository.name,
         issue_number: payload.pull_request.number,
@@ -82,9 +83,10 @@ app.webhooks.on('pull_request.labeled', async ({ octokit, payload }) => {
       });
     }
   } catch (error) {
-    if (error.response) {
+    const customError = error as CustomError;
+    if (customError.response) {
       console.error(
-        `Error! Status: ${error.response.status}. Message: ${error.response.data.message}`
+        `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
       );
     } else {
       console.error(error);
@@ -126,7 +128,7 @@ app.webhooks.on('push', async ({ octokit, payload }) => {
   if (payload.ref === 'refs/heads/main') {
     console.log('Push event received for main branch');
     try {
-      const { data: pullRequests } = await octokit.pulls.list({
+      const { data: pullRequests } = await octokit.rest.pulls.list({
         owner: payload.repository?.owner?.name || '',
         repo: payload.repository.name,
         state: 'open',
@@ -136,14 +138,14 @@ app.webhooks.on('push', async ({ octokit, payload }) => {
       pullRequests.forEach(async (pullRequest) => {
         try {
           console.log(`Merging main into PR branch ${pullRequest.head.ref}`);
-          await octokit.repos.merge({
+          await octokit.rest.repos.merge({
             owner: payload.repository?.owner?.name || '',
             repo: payload.repository.name,
             base: pullRequest.head.ref,
             head: 'main',
             commit_message: `Merging main into PR branch ${pullRequest.head.ref} (Automatic🚀)`,
           });
-          await octokit.issues.createComment({
+          await octokit.rest.issues.createComment({
             owner: payload.repository?.owner?.name || '',
             repo: payload.repository.name,
             issue_number: pullRequest.number,
@@ -151,7 +153,7 @@ app.webhooks.on('push', async ({ octokit, payload }) => {
           });
         } catch (error) {
           console.log('Merge conflict detected');
-          await octokit.issues.addLabels({
+          await octokit.rest.issues.addLabels({
             owner: payload.repository?.owner?.name || '',
             repo: payload.repository.name,
             issue_number: pullRequest.number,
@@ -160,9 +162,10 @@ app.webhooks.on('push', async ({ octokit, payload }) => {
         }
       });
     } catch (error) {
-      if (error.response) {
+      const customError = error as CustomError;
+      if (customError.response) {
         console.error(
-          `Error! Status: ${error.response.status}. Message: ${error.response.data.message}`
+          `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
         );
       } else {
         console.error(error);
@@ -185,14 +188,14 @@ app.webhooks.on('pull_request.synchronize', async ({ octokit, payload }) => {
     );
 
     if (mergable === false) {
-      await octokit.issues.addLabels({
+      await octokit.rest.issues.addLabels({
         owner: payload.repository.owner.login,
         repo: payload.repository.name,
         issue_number: payload.pull_request.number,
         labels: ['Merge Conflict'],
       });
 
-      await octokit.issues.createComment({
+      await octokit.rest.issues.createComment({
         owner: payload.repository.owner.login,
         repo: payload.repository.name,
         issue_number: payload.pull_request.number,
@@ -205,7 +208,7 @@ app.webhooks.on('pull_request.synchronize', async ({ octokit, payload }) => {
         )
       ) {
         console.log('Removing the merge conflict label');
-        await octokit.issues.removeLabel({
+        await octokit.rest.issues.removeLabel({
           owner: payload.repository.owner.login,
           repo: payload.repository.name,
           issue_number: payload.pull_request.number,
@@ -213,7 +216,7 @@ app.webhooks.on('pull_request.synchronize', async ({ octokit, payload }) => {
         });
       }
 
-      await octokit.issues.createComment({
+      await octokit.rest.issues.createComment({
         owner: payload.repository.owner.login,
         repo: payload.repository.name,
         issue_number: payload.pull_request.number,
@@ -221,9 +224,10 @@ app.webhooks.on('pull_request.synchronize', async ({ octokit, payload }) => {
       });
     }
   } catch (error) {
-    if (error.response) {
+    const customError = error as CustomError;
+    if (customError.response) {
       console.error(
-        `Error! Status: ${error.response.status}. Message: ${error.response.data.message}`
+        `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
       );
     } else {
       console.error(error);
@@ -247,7 +251,9 @@ const path = '/api/webhook';
 const localWebhookUrl = `http://localhost:${port}${path}`;
 
 // See https://github.com/octokit/webhooks.js/#createnodemiddleware for all options
-const middleware = createNodeMiddleware(app.webhooks, { path });
+const middleware = createNodeMiddleware(app.webhooks as unknown as Webhooks, {
+  path,
+});
 
 http.createServer(middleware).listen(port, () => {
   console.log(`Server is listening for events at: ${localWebhookUrl}`);

@@ -1,8 +1,10 @@
+import type { CustomError } from '../types/common.d.ts';
+
 export async function checkForMergeConflicts(
-  octokit,
-  owner,
-  repo,
-  pull_number,
+  octokit: any,
+  owner: any,
+  repo: any,
+  pull_number: any,
   retries = 3,
   retryDelay = 5000
 ) {
@@ -18,7 +20,8 @@ export async function checkForMergeConflicts(
         return pullRequest.mergeable;
       }
     } catch (error) {
-      console.error(`Error! ${error.message}`);
+      const customError = error as CustomError;
+      console.error(`Error! ${customError.message}`);
       await new Promise((resolve) => setTimeout(resolve, retryDelay));
     }
   }
