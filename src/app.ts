@@ -69,7 +69,7 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
   }
 });
 
-//Subscribe to "label.created" webhook event
+//Subscribe to "label.created" webhook events
 app.webhooks.on('pull_request.labeled', async ({ octokit, payload }) => {
   try {
     if (!payload.sender.login.includes('bot')) {
