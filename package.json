@@ -23,6 +23,9 @@
     "@octokit/rest": "^21.0.2",
     "@octokit/webhooks": "^13.4.1",
     "dotenv": "^16.0.3",
-    "octokit": "^3.1.2"
+    "octokit": "^3.1.2",
+    "pg": "^8.13.1",
+    "reflect-metadata": "^0.2.2",
+    "typeorm": "^0.3.20"
   }
 }
