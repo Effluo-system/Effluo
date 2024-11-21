@@ -15,12 +15,6 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
     `Received a pull request event for #${payload.pull_request.number}`
   );
   try {
-    logger.info(
-      'installation: ' +
-        payload.installation?.id +
-        ' : ' +
-        payload.installation?.node_id
-    );
     await octokit.rest.issues.createComment({
       owner: payload.repository.owner.login,
       repo: payload.repository.name,
