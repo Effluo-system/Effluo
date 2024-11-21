@@ -14,4 +14,18 @@ export class PullRequestService {
       throw new Error(`Error adding pull request to db: ${error}`);
     }
   }
+
+  public static async getPullRequestById(
+    id: number
+  ): Promise<PullRequest | null> {
+    try {
+      return this.pullRequestRepository.findOne({
+        where: {
+          id,
+        },
+      });
+    } catch (error) {
+      throw new Error(`Error getting pull request from db: ${error}`);
+    }
+  }
 }

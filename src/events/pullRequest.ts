@@ -15,12 +15,6 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
     `Received a pull request event for #${payload.pull_request.number}`
   );
   try {
-    logger.info(
-      'installation: ' +
-        payload.installation?.id +
-        ' : ' +
-        payload.installation?.node_id
-    );
     await octokit.rest.issues.createComment({
       owner: payload.repository.owner.login,
       repo: payload.repository.name,
@@ -42,7 +36,9 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
       created_by_user_id: payload.pull_request.user.id,
       created_by_user_login: payload.pull_request.user.login,
       url: payload.pull_request.html_url,
+      reviews: [],
     });
+    logger.info('Pull request created successfully');
   } catch (error) {
     const customError = error as CustomError;
     if (customError.response) {
