@@ -2,7 +2,7 @@ import './events/pullRequest.ts';
 import './events/push.ts';
 import './events/onError.ts';
 import './events/mergeConflict.ts';
-import './events/comment.ts';
+import './events/reviewPR.ts';
 import { startServer } from './server/server.ts';
 import { app } from './config/appConfig.ts';
 

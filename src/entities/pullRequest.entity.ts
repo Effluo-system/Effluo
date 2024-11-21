@@ -1,4 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity, Column, OneToMany } from 'typeorm';
+import { Review } from './review.entity.ts';
 
 @Entity()
 export class PullRequest {
@@ -38,6 +39,11 @@ export class PullRequest {
   @Column({ type: 'varchar', nullable: false })
   url: string;
 
+  @OneToMany(() => Review, (review) => review.pull_request, {
+    cascade: true,
+  })
+  reviews: Review[];
+
   constructor(
     id: number,
     title: string,
@@ -50,7 +56,8 @@ export class PullRequest {
     repository: string,
     created_by_user_id: number,
     created_by_user_login: string,
-    url: string
+    url: string,
+    reviews: Review[]
   ) {
     this.id = id;
     this.title = title;
@@ -64,5 +71,6 @@ export class PullRequest {
     this.created_by_user_id = created_by_user_id;
     this.created_by_user_login = created_by_user_login;
     this.url = url;
+    this.reviews = reviews;
   }
 }
