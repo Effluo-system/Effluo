@@ -1,11 +1,12 @@
 import { app } from '../config/appConfig.ts';
+import { logger } from '../utils/logger.ts';
 
 // Optional: Handle errors
 app.webhooks.onError((error) => {
   if (error.name === 'AggregateError') {
     // Log Secret verification errors
-    console.log(`Error processing request: ${error.event}`);
+    logger.error(`Error processing request: ${error.event}`);
   } else {
-    console.log(error);
+    logger.error(error);
   }
 });

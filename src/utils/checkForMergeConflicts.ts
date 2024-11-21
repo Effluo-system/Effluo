@@ -1,4 +1,5 @@
 import type { CustomError } from '../types/common.d.ts';
+import { logger } from './logger.ts';
 
 export async function checkForMergeConflicts(
   octokit: any,
@@ -21,7 +22,7 @@ export async function checkForMergeConflicts(
       }
     } catch (error) {
       const customError = error as CustomError;
-      console.error(`Error! ${customError.message}`);
+      logger.error(`Error! ${customError.message}`);
       await new Promise((resolve) => setTimeout(resolve, retryDelay));
     }
   }

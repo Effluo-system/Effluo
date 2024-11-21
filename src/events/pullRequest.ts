@@ -1,6 +1,8 @@
 import { app } from '../config/appConfig.ts';
+import { PullRequestService } from '../services/pullRequest.service.ts';
 import { CustomError } from '../types/common.d';
 import fs from 'fs';
+import { logger } from '../utils/logger.ts';
 
 const messageForNewPRs = fs.readFileSync('./src/messages/message.md', 'utf8');
 const messageForNewLabel = fs.readFileSync(
@@ -9,24 +11,46 @@ const messageForNewLabel = fs.readFileSync(
 );
 // Subscribe to the "pull_request.opened" webhook event
 app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
-  console.log(
+  logger.info(
     `Received a pull request event for #${payload.pull_request.number}`
   );
   try {
+    logger.info(
+      'installation: ' +
+        payload.installation?.id +
+        ' : ' +
+        payload.installation?.node_id
+    );
     await octokit.rest.issues.createComment({
       owner: payload.repository.owner.login,
       repo: payload.repository.name,
       issue_number: payload.pull_request.number,
       body: messageForNewPRs,
     });
+    await PullRequestService.createPullRequest({
+      id: payload.pull_request.id,
+      title: payload.pull_request.title,
+      body: payload.pull_request.body,
+      assignee: payload.pull_request.assignee?.login || null,
+      assignees: payload.pull_request.assignees.map(
+        (assignee) => assignee.login
+      ),
+      created_at: new Date(payload.pull_request.created_at),
+      closed_at: payload.pull_request.closed_at,
+      number: payload.pull_request.number,
+      repository: payload.repository.full_name,
+      created_by_user_id: payload.pull_request.user.id,
+      created_by_user_login: payload.pull_request.user.login,
+      url: payload.pull_request.html_url,
+    });
   } catch (error) {
     const customError = error as CustomError;
     if (customError.response) {
-      console.error(
+      logger.error(
         `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
       );
     } else {
-      console.error(customError.message || 'An unknown error occurred');
+      logger.error(customError.message || 'An unknown error occurred');
     }
   }
 });
@@ -35,7 +59,7 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
 app.webhooks.on('pull_request.labeled', async ({ octokit, payload }) => {
   try {
     if (!payload.sender.login.includes('bot')) {
-      console.log(`Received a label event for #${payload?.label?.name}`);
+      logger.info(`Received a label event for #${payload?.label?.name}`);
 
       await octokit.rest.issues.createComment({
         owner: payload.repository.owner.login,
@@ -47,11 +71,11 @@ app.webhooks.on('pull_request.labeled', async ({ octokit, payload }) => {
   } catch (error) {
     const customError = error as CustomError;
     if (customError.response) {
-      console.error(
+      logger.error(
         `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
       );
     } else {
-      console.error(error);
+      logger.error(error);
     }
   }
 });
@@ -60,7 +84,7 @@ app.webhooks.on('pull_request.labeled', async ({ octokit, payload }) => {
 // app.webhooks.on(
 //   'pull_request.review_requested',
 //   async ({ octokit, payload }) => {
-//     console.log(
+//     logger.info(
 //       `Received a review requested event for #${payload.pull_request.number}`
 //     );
 //     try {
@@ -74,11 +98,11 @@ app.webhooks.on('pull_request.labeled', async ({ octokit, payload }) => {
 //       }, 5000);
 //     } catch (error) {
 //       if (error.response) {
-//         console.error(
+//         logger.error(
 //           `Error! Status: ${error.response.status}. Message: ${error.response.data.message}`
 //         );
 //       } else {
-//         console.error(error);
+//         logger.error(error);
 //       }
 //     }
 //   }
