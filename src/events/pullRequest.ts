@@ -38,6 +38,7 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
       url: payload.pull_request.html_url,
       reviews: [],
     });
+    logger.info('Pull request created successfully');
   } catch (error) {
     const customError = error as CustomError;
     if (customError.response) {

@@ -1,4 +1,10 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToOne } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  OneToOne,
+  ManyToOne,
+} from 'typeorm';
 import { PullRequest } from './pullRequest.entity.ts';
 
 @Entity()
@@ -18,8 +24,8 @@ export class Review {
   @Column({ type: 'varchar', nullable: false })
   created_by_user_login: string;
 
-  @OneToOne(() => PullRequest, (pr) => pr.reviews, {
-    cascade: true,
+  @ManyToOne(() => PullRequest, (pr) => pr.reviews, {
+    cascade: false,
   })
   pull_request: PullRequest | null;
 

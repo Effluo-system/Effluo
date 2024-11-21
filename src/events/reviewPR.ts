@@ -11,13 +11,32 @@ app.webhooks.on(
       `Received a review event for pull request  #${payload.pull_request.number}`
     );
     try {
-      const pr = await PullRequestService.getPullRequestById(
+      let pr = await PullRequestService.getPullRequestById(
         payload.pull_request?.id
       );
 
       if (!pr) {
-        logger.error('Pull request not found');
-        return;
+        logger.info('Pull request not found');
+        pr = await PullRequestService.createPullRequest({
+          id: payload.pull_request.id,
+          title: payload.pull_request.title,
+          body: payload.pull_request.body,
+          assignee: payload.pull_request.assignee?.login || null,
+          assignees: payload.pull_request.assignees.map(
+            (assignee) => assignee.login
+          ),
+          created_at: new Date(payload.pull_request.created_at),
+          closed_at: payload.pull_request.closed_at
+            ? new Date(payload.pull_request.closed_at)
+            : null,
+          number: payload.pull_request.number,
+          repository: payload.repository.full_name,
+          created_by_user_id: payload.pull_request.user.id,
+          created_by_user_login: payload.pull_request.user.login,
+          url: payload.pull_request.html_url,
+          reviews: [],
+        });
+        logger.info('Pull request created successfully');
       }
 
       await ReviewService.createReview({
@@ -30,6 +49,8 @@ app.webhooks.on(
         created_by_user_login: payload.review.user.login,
         pull_request: pr,
       });
+
+      logger.info('Review created successfully');
     } catch (error) {
       const customError = error as CustomError;
       if (customError.response) {
