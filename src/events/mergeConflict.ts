@@ -1,10 +1,11 @@
 import { app } from '../config/appConfig.ts';
 import type { CustomError } from '../types/common.d.ts';
 import { checkForMergeConflicts } from '../utils/checkForMergeConflicts.ts';
+import { logger } from '../utils/logger.ts';
 
 // Notify on merge conflicts
 app.webhooks.on('pull_request.synchronize', async ({ octokit, payload }) => {
-  console.log(
+  logger.info(
     `Received a synchronize event for #${payload.pull_request.number}`
   );
   try {
@@ -35,7 +36,7 @@ app.webhooks.on('pull_request.synchronize', async ({ octokit, payload }) => {
           (label) => label.name === 'Merge Conflict'
         )
       ) {
-        console.log('Removing the merge conflict label');
+        logger.info('Removing the merge conflict label');
         await octokit.rest.issues.removeLabel({
           owner: payload.repository.owner.login,
           repo: payload.repository.name,
@@ -54,11 +55,11 @@ app.webhooks.on('pull_request.synchronize', async ({ octokit, payload }) => {
   } catch (error) {
     const customError = error as CustomError;
     if (customError.response) {
-      console.error(
+      logger.error(
         `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
       );
     } else {
-      console.error(error);
+      logger.error(error);
     }
   }
 });

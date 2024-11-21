@@ -1,11 +1,12 @@
 import { app } from '../config/appConfig.ts';
 import type { CustomError } from '../types/common.d.ts';
+import { logger } from '../utils/logger.ts';
 
 // Keep PRs up to date with the main branch
 app.webhooks.on('push', async ({ octokit, payload }) => {
-  console.log(`Received a push event for ${payload.ref}`);
+  logger.info(`Received a push event for ${payload.ref}`);
   if (payload.ref === 'refs/heads/main') {
-    console.log('Push event received for main branch');
+    logger.info('Push event received for main branch');
     try {
       const { data: pullRequests } = await octokit.rest.pulls.list({
         owner: payload.repository?.owner?.name || '',
@@ -16,7 +17,7 @@ app.webhooks.on('push', async ({ octokit, payload }) => {
 
       pullRequests.forEach(async (pullRequest) => {
         try {
-          console.log(`Merging main into PR branch ${pullRequest.head.ref}`);
+          logger.info(`Merging main into PR branch ${pullRequest.head.ref}`);
           await octokit.rest.repos.merge({
             owner: payload.repository?.owner?.name || '',
             repo: payload.repository.name,
@@ -31,7 +32,7 @@ app.webhooks.on('push', async ({ octokit, payload }) => {
             body: 'This PR has been updated with the latest changes from the main branch.✔️',
           });
         } catch (error) {
-          console.log('Merge conflict detected');
+          logger.info('Merge conflict detected');
           await octokit.rest.issues.addLabels({
             owner: payload.repository?.owner?.name || '',
             repo: payload.repository.name,
@@ -43,11 +44,11 @@ app.webhooks.on('push', async ({ octokit, payload }) => {
     } catch (error) {
       const customError = error as CustomError;
       if (customError.response) {
-        console.error(
+        logger.error(
           `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
         );
       } else {
-        console.error(error);
+        logger.error(error);
       }
     }
   }
