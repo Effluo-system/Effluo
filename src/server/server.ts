@@ -12,16 +12,17 @@ const localWebhookUrl = `http://localhost:${env.port}${PATH}`;
 
 export const AppDataSource = new DataSource(dbConfig);
 
-export const startServer = () => {
-  AppDataSource.initialize()
-    .then(() => {
-      logger.info('Connected to the database....');
-      server.listen(env.port, () => {
-        logger.info(`Server is listening for events at: ${localWebhookUrl}`);
-        logger.info('Press Ctrl + C to quit.');
-      });
-    })
-    .catch((error) => {
-      logger.error('Error connecting to the database:', error);
+export const startServer = async () => {
+  try {
+    await AppDataSource.initialize();
+
+    logger.info('Connected to the database....');
+
+    server.listen(env.port, () => {
+      logger.info(`Server is listening for events at: ${localWebhookUrl}`);
+      logger.info('Press Ctrl + C to quit.');
     });
+  } catch (error) {
+    logger.error('Error connecting to the database:', error);
+  }
 };

@@ -1,4 +1,5 @@
 import { app } from '../config/appConfig.ts';
+import { analyzeReviewers } from '../functions/analyse-reviewers/analyseReviewers.ts';
 import { PullRequestService } from '../services/pullRequest.service.ts';
 import { ReviewService } from '../services/review.service.ts';
 import type { CustomError } from '../types/common.ts';
@@ -35,6 +36,7 @@ app.webhooks.on(
           created_by_user_login: payload.pull_request.user.login,
           url: payload.pull_request.html_url,
           reviews: [],
+          labels: payload.pull_request.labels.map((label) => label.name),
         });
         logger.info('Pull request created successfully');
       }

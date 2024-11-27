@@ -28,4 +28,12 @@ export class PullRequestService {
       throw new Error(`Error getting pull request from db: ${error}`);
     }
   }
+
+  public static async getAllPullRequests(): Promise<PullRequest[]> {
+    try {
+      return this.pullRequestRepository.find();
+    } catch (error) {
+      throw new Error(`Error getting pull requests from db: ${error}`);
+    }
+  }
 }

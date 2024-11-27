@@ -39,6 +39,9 @@ export class PullRequest {
   @Column({ type: 'varchar', nullable: false })
   url: string;
 
+  @Column({ nullable: true, type: 'jsonb', default: [] })
+  labels: string[] | null;
+
   @OneToMany(() => Review, (review) => review.pull_request, {
     cascade: true,
   })
@@ -57,7 +60,8 @@ export class PullRequest {
     created_by_user_id: number,
     created_by_user_login: string,
     url: string,
-    reviews: Review[]
+    reviews: Review[],
+    labels: string[]
   ) {
     this.id = id;
     this.title = title;
@@ -72,5 +76,6 @@ export class PullRequest {
     this.created_by_user_login = created_by_user_login;
     this.url = url;
     this.reviews = reviews;
+    this.labels = labels;
   }
 }
