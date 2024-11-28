@@ -73,6 +73,17 @@ app.webhooks.on('pull_request.labeled', async ({ octokit, payload }) => {
         issue_number: payload.pull_request.number,
         body: messageForNewLabel,
       });
+
+      let pr = await PullRequestService.getPullRequestById(
+        payload?.pull_request?.id.toString()
+      );
+      if (!pr) {
+        logger.info(`Pull request not found. Creating new pull request ...`);
+        pr = await PullRequestService.initiatePullRequestCreationFlow(payload);
+      }
+      pr.labels = payload.pull_request.labels.map((labels) => labels.name);
+      await PullRequestService.updatePullRequest(pr);
+      logger.info(`Pull request updated successfully`);
     }
   } catch (error) {
     const customError = error as CustomError;

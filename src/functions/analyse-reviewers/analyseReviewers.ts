@@ -1,11 +1,20 @@
 import schedule, { Spec } from 'node-schedule';
 import { ReviewService } from '../../services/review.service.ts';
-import { UserReviewSummary } from '../../types/analyze-reviewers';
+import {
+  RepoData,
+  FrequencySummaryResult,
+  UserReviewSummary,
+  FrequencySummaryResultForEachRepo,
+} from '../../types/analyze-reviewers';
+import { UserReviewSummaryService } from '../../services/userReviewSummary.service.ts';
+import { logger } from '../../utils/logger.ts';
+import { RepoService } from '../../services/repo.service.ts';
 
 export const analyzeReviewers = async () => {
   const reviews = await ReviewService.getReviewsMadeInTheCurrentWeek();
-  //console.log(JSON.stringify(reviews));
   const repoData: UserReviewSummary = {};
+
+  logger.debug('Creating summary ...');
 
   // Populate the data structure
   reviews.forEach((review) => {
@@ -31,9 +40,10 @@ export const analyzeReviewers = async () => {
       repoData[repoId][user][label]++;
     });
   });
-
-  // Output the structured data
-  console.log(JSON.stringify(repoData));
+  logger.debug('Summary created');
+  const metrics = findMostWorkedInCategory(repos);
+  console.log(metrics);
+  logger.debug('Metrics calculated successfully');
 };
 
 export const analyzeReviewersCron = (cron: String = '30 * * * * *') => {
@@ -41,3 +51,116 @@ export const analyzeReviewersCron = (cron: String = '30 * * * * *') => {
     analyzeReviewers();
   });
 };
+
+function findMostWorkedInCategory(
+  repos: UserReviewSummary
+): FrequencySummaryResult {
+  logger.debug('Finding most frequent reviewers for each label...');
+  return Object.keys(repos).reduce(
+    (result: FrequencySummaryResult, repoId: string) => {
+      const repo = repos[repoId];
+
+      // Initialize the result object for the current repo
+      result[repoId] = Object.keys(repo).reduce(
+        (repoResult: { [category: string]: string }, person: string) => {
+          const work = repo[person];
+
+          // Iterate through the categories and update the person who worked most in each category
+          Object.keys(work).forEach((category: string) => {
+            const workCount = work[category];
+
+            // If no one has been assigned to this category or the current person worked more, update the result
+            if (
+              !repoResult[category] ||
+              workCount >
+                ((repoResult[category] &&
+                  repo[repoResult[category]][category]) ||
+                  0)
+            ) {
+              repoResult[category] = person;
+            }
+          });
+
+          return repoResult;
+        },
+        {}
+      );
+
+      return result;
+    },
+    {} as FrequencySummaryResult
+  );
+}
+
+const repos: RepoData = {
+  '213231': {
+    David: { security: 2 },
+    Fiona: { frontend: 6, security: 1, backend: 4 },
+    Navojith: { frontend: 3, ui: 6 },
+    Bob: { frontend: 1 },
+  },
+  '894052335': {
+    Navojith: {
+      backend: 2,
+      security: 1,
+      bug: 1,
+      documentation: 1,
+      duplicate: 1,
+    },
+  },
+};
+
+const fetchSummaryForEachRepo = (newSummary: FrequencySummaryResult) => {
+  logger.debug('Fetching previous summary for each repo ...');
+  Object.keys(newSummary).forEach(async (repoId) => {
+    const previousSummary = await UserReviewSummaryService.getSummaryByRepoId(
+      repoId
+    );
+    if (!previousSummary) {
+      const repo = await RepoService.getRepoById(repoId);
+      if (!repo) {
+        throw new Error(`Repo with id ${repoId} not found`);
+      }
+      await UserReviewSummaryService.createSummary({
+        repo: repo,
+        review_summary: newSummary[repoId],
+      });
+      // TODO: add pipeline
+      return;
+    }
+    if (areSummariesEqual(previousSummary.review_summary, newSummary[repoId])) {
+      logger.info(
+        `Summary for repo ${repoId} has not changed. Skipping pipeline creation`
+      );
+      return;
+    }
+    previousSummary.review_summary = newSummary[repoId];
+    await UserReviewSummaryService.updateSummary(previousSummary);
+    logger.info(`Summary for repo ${repoId} has been updated`);
+    logger.info('Initiating pipeline creation...');
+  });
+};
+
+function areSummariesEqual(
+  oldSummary: FrequencySummaryResultForEachRepo,
+  newSummary: FrequencySummaryResultForEachRepo
+): boolean {
+  const oldKeys = Object.keys(oldSummary);
+  const newKeys = Object.keys(newSummary);
+
+  // Check if both have the same keys
+  if (oldKeys.length !== newKeys.length) {
+    return false;
+  }
+
+  for (const key of oldKeys) {
+    if (!newSummary.hasOwnProperty(key)) {
+      return false; // Key is missing in newSummary
+    }
+    if (oldSummary[key] !== newSummary[key]) {
+      return false; // Value mismatch
+    }
+  }
+
+  return true;
+}

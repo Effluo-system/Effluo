@@ -1,6 +1,7 @@
 import { PullRequest } from '../entities/pullRequest.entity.ts';
 import { AppDataSource } from '../server/server.ts';
 import type {
+  PullRequestLabeledEvent,
   PullRequestOpenedEvent,
   PullRequestReopenedEvent,
   PullRequestReviewSubmittedEvent,
@@ -44,11 +45,22 @@ export class PullRequestService {
     }
   }
 
+  public static async updatePullRequest(
+    pullRequest: PullRequest
+  ): Promise<PullRequest> {
+    try {
+      return this.pullRequestRepository.save(pullRequest);
+    } catch (error) {
+      throw new Error(`Error updating pull request: ${error}`);
+    }
+  }
+
   public static async initiatePullRequestCreationFlow(
     payload:
       | PullRequestOpenedEvent
       | PullRequestReopenedEvent
       | PullRequestReviewSubmittedEvent
+      | PullRequestLabeledEvent
   ): Promise<PullRequest> {
     try {
       let repo = await RepoService.getRepoById(
