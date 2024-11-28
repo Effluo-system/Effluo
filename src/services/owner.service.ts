@@ -4,7 +4,7 @@ import { AppDataSource } from '../server/server.ts';
 export class OwnerService {
   private static ownerRepository = AppDataSource.getRepository(Owner);
 
-  public static async createOwners(owner: Owner): Promise<Owner> {
+  public static async createOwner(owner: Owner): Promise<Owner> {
     try {
       return this.ownerRepository.save(owner);
     } catch (error) {
@@ -12,7 +12,7 @@ export class OwnerService {
     }
   }
 
-  public static async getOwnersById(id: number): Promise<Owner | null> {
+  public static async getOwnersById(id: string): Promise<Owner | null> {
     try {
       return this.ownerRepository.findOne({
         where: {

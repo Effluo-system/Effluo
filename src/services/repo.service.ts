@@ -12,7 +12,7 @@ export class RepoService {
     }
   }
 
-  public static async getRepoById(id: number): Promise<Repo | null> {
+  public static async getRepoById(id: string): Promise<Repo | null> {
     try {
       return this.repoRepository.findOne({
         where: {

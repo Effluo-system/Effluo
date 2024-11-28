@@ -13,36 +13,16 @@ app.webhooks.on(
     );
     try {
       let pr = await PullRequestService.getPullRequestById(
-        payload.pull_request?.id
+        payload.pull_request?.id.toString()
       );
 
       if (!pr) {
         logger.info('Pull request not found');
-        pr = await PullRequestService.createPullRequest({
-          id: payload.pull_request.id,
-          title: payload.pull_request.title,
-          body: payload.pull_request.body,
-          assignee: payload.pull_request.assignee?.login || null,
-          assignees: payload.pull_request.assignees.map(
-            (assignee) => assignee.login
-          ),
-          created_at: new Date(payload.pull_request.created_at),
-          closed_at: payload.pull_request.closed_at
-            ? new Date(payload.pull_request.closed_at)
-            : null,
-          number: payload.pull_request.number,
-          repository: payload.repository.full_name,
-          created_by_user_id: payload.pull_request.user.id,
-          created_by_user_login: payload.pull_request.user.login,
-          url: payload.pull_request.html_url,
-          reviews: [],
-          labels: payload.pull_request.labels.map((label) => label.name),
-        });
-        logger.info('Pull request created successfully');
+        pr = await PullRequestService.initiatePullRequestCreationFlow(payload);
       }
 
       await ReviewService.createReview({
-        id: payload.review.id,
+        id: payload.review.id.toString(),
         body: payload.review.body,
         created_at: payload.review.submitted_at
           ? new Date(payload.review.submitted_at)

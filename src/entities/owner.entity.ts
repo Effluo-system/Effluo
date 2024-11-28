@@ -1,26 +1,20 @@
-import { Entity, Column, ManyToOne, OneToMany } from 'typeorm';
+import { Entity, Column, ManyToOne, OneToMany, Relation } from 'typeorm';
 import { Repo } from './repo.entity.ts';
 
 @Entity()
 export class Owner {
   @Column({ type: 'varchar', primary: true, nullable: false })
-  id: number;
+  id!: string;
 
   @Column({ type: 'varchar', nullable: false })
-  login: string;
+  login!: string;
 
   @Column({ type: 'varchar', nullable: false })
-  url: string;
+  url!: string;
 
   @OneToMany(() => Repo, (repo) => repo.owner, {
     cascade: true,
+    nullable: true,
   })
-  repos: Repo[];
-
-  constructor(id: number, login: string, url: string, repos: Repo[]) {
-    this.id = id;
-    this.login = login;
-    this.url = url;
-    this.repos = repos;
-  }
+  repos?: Relation<Repo[]>;
 }

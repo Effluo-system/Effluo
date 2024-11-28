@@ -12,7 +12,7 @@ export class ReviewService {
     }
   }
 
-  public static async getReviewById(id: number): Promise<Review | null> {
+  public static async getReviewById(id: string): Promise<Review | null> {
     try {
       return this.reviewRepository.findOne({
         where: {
@@ -32,7 +32,7 @@ export class ReviewService {
     }
   }
 
-  public static async getReviewsMadeInTheWeek(): Promise<Review[]> {
+  public static async getReviewsMadeInTheCurrentWeek(): Promise<Review[]> {
     try {
       // Get the current date
       const currentDate = new Date();
@@ -56,6 +56,7 @@ export class ReviewService {
       return this.reviewRepository
         .createQueryBuilder('review')
         .leftJoinAndSelect('review.pull_request', 'pull_request')
+        .leftJoinAndSelect('pull_request.repository', 'repository')
         .where('review.created_at >= :startOfWeek', {
           startOfWeek: startOfWeekUtc,
         })

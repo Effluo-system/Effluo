@@ -1,5 +1,7 @@
 export type UserReviewSummary = {
-  [userName: string]: {
-    [prCategory: string]: number;
+  [repoId: string]: {
+    [user: string]: {
+      [label: string]: number;
+    };
   };
 };
