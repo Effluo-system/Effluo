@@ -8,6 +8,8 @@ import { app as octokitApp } from './config/appConfig.ts';
 import { analyzeReviewersCron } from './functions/analyse-reviewers/analyseReviewers.ts';
 import { app } from './server/server.ts';
 import authRouter from './routes/auth.routes.ts';
+import { logger } from './utils/logger.ts';
+import { createOrUpdateWorkflowFile } from './functions/analyse-reviewers/pipelines/createAssignReviewerPipeline.ts';
 
 const { data } = await octokitApp.octokit.request('/app');
 octokitApp.octokit.log.debug(`Authenticated as '${data.name}'`);
@@ -20,3 +22,5 @@ app.get('/health', (req, res) => {
 app.use(authRouter);
 
 analyzeReviewersCron();
+
+await createOrUpdateWorkflowFile();
