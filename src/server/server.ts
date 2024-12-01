@@ -6,11 +6,20 @@ import { DataSource } from 'typeorm';
 import dbConfig from '../database/db.config.ts';
 import 'reflect-metadata';
 import { logger } from '../utils/logger.ts';
+import express from 'express';
+import { logIncomingTraffic } from './loggerMiddleware.ts';
 
-const server = http.createServer(middleware);
+// const server = http.createServer(middleware);
 const localWebhookUrl = `http://localhost:${env.port}${PATH}`;
 
 export const AppDataSource = new DataSource(dbConfig);
+
+export const app = express();
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(middleware);
+app.use(logIncomingTraffic);
 
 export const startServer = async () => {
   try {
@@ -18,7 +27,7 @@ export const startServer = async () => {
 
     logger.info('Connected to the database....');
 
-    server.listen(env.port, () => {
+    app.listen(env.port, () => {
       logger.info(`Server is listening for events at: ${localWebhookUrl}`);
       logger.info('Press Ctrl + C to quit.');
     });
