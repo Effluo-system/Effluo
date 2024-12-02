@@ -41,7 +41,7 @@ export class AuthService {
         return response.data;
       }
     } catch (error) {
-      //   logger.error(error);
+      logger.error(error);
       throw new Error('Cannot get the user');
     }
   }

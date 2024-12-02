@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { Router } from 'express';
 import { AuthService } from '../services/auth.service.ts';
 
