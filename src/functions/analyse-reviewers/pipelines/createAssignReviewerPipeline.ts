@@ -13,8 +13,9 @@ export async function createOrUpdateWorkflowFile(
   reviewers: string[],
   labels: string[]
 ) {
-  const filePath =
-    '.github/workflows/auto-assign-reviewer-frontend-workflow.yml'; // Path to the workflow file
+  const filePath = `.github/workflows/auto-assign-reviewer-${labels.join(
+    '-'
+  )}-workflow.yml`; // Path to the workflow file
   const branch = 'main'; // Branch name to push the file to
 
   // Define the content of the workflow file

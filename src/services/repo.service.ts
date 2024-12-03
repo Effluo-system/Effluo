@@ -21,6 +21,7 @@ export class RepoService {
         where: {
           id,
         },
+        relations: ['owner'],
       });
     } catch (error) {
       throw new Error(`Error getting repo from db: ${error}`);

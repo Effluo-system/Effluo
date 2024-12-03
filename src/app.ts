@@ -23,4 +23,4 @@ app.get('/health', (req, res) => {
 app.use(authRouter);
 app.use(consoleRouter);
 
-// analyzeReviewersCron();
+analyzeReviewersCron();
