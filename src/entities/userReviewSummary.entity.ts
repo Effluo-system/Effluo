@@ -4,6 +4,7 @@ import {
   PrimaryGeneratedColumn,
   OneToOne,
   Relation,
+  JoinColumn,
 } from 'typeorm';
 import { Repo } from './repo.entity.ts';
 import { FrequencySummaryResultForEachRepo } from '../types/analyze-reviewers';
@@ -19,5 +20,6 @@ export class UserReviewSummary {
   @OneToOne(() => Repo, (repo) => repo.user_review_summary, {
     cascade: false,
   })
+  @JoinColumn()
   repo!: Relation<Repo>;
 }

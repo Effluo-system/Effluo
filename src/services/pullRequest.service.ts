@@ -9,6 +9,8 @@ import type {
 import { logger } from '../utils/logger.ts';
 import { OwnerService } from './owner.service.ts';
 import { RepoService } from './repo.service.ts';
+import { Octokit } from 'octokit';
+import { In } from 'typeorm';
 export class PullRequestService {
   private static pullRequestRepository =
     AppDataSource.getRepository(PullRequest);
@@ -33,6 +35,7 @@ export class PullRequestService {
         },
       });
     } catch (error) {
+      logger.error(error);
       throw new Error(`Error getting pull request from db: ${error}`);
     }
   }
@@ -41,6 +44,8 @@ export class PullRequestService {
     try {
       return this.pullRequestRepository.find();
     } catch (error) {
+      logger.error(error);
+
       throw new Error(`Error getting pull requests from db: ${error}`);
     }
   }
@@ -51,6 +56,8 @@ export class PullRequestService {
     try {
       return this.pullRequestRepository.save(pullRequest);
     } catch (error) {
+      logger.error(error);
+
       throw new Error(`Error updating pull request: ${error}`);
     }
   }
@@ -114,7 +121,45 @@ export class PullRequestService {
       logger.info('Pull request created successfully');
       return pr;
     } catch (error) {
+      logger.error(error);
       throw new Error(`Error initiating pull request creation flow: ${error}`);
+    }
+  }
+
+  public static async getPullRequestsByToken(token: string) {
+    try {
+      const octokit = new Octokit({
+        auth: token,
+      });
+      const { data } = await octokit.rest.users.getAuthenticated();
+
+      if (data) {
+        const { id } = data;
+        const isOwner = await OwnerService.getOwnersById(id.toString());
+        if (!isOwner) {
+          const prs = await this.pullRequestRepository.find({
+            where: {
+              created_by_user_id: id,
+            },
+            relations: ['repository'],
+          });
+          return prs;
+        } else {
+          const repos = await RepoService.getReposByOwnerId(id.toString());
+
+          const repoIds = repos.map((repo) => repo.id);
+          const prs = await this.pullRequestRepository.find({
+            where: {
+              repository: { id: In(repoIds) },
+            },
+            relations: ['repository'],
+          });
+          return prs;
+        }
+      }
+    } catch (error) {
+      logger.error(error);
+      throw new Error(`Error getting pull requests by token: ${error}`);
     }
   }
 }

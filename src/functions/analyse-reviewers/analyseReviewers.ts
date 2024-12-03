@@ -9,6 +9,8 @@ import {
 import { UserReviewSummaryService } from '../../services/userReviewSummary.service.ts';
 import { logger } from '../../utils/logger.ts';
 import { RepoService } from '../../services/repo.service.ts';
+import { Octokit } from '@octokit/rest';
+import { createOrUpdateWorkflowFile } from './pipelines/createAssignReviewerPipeline.ts';
 
 export const analyzeReviewers = async () => {
   const reviews = await ReviewService.getReviewsMadeInTheCurrentWeek();
@@ -41,8 +43,8 @@ export const analyzeReviewers = async () => {
     });
   });
   logger.debug('Summary created');
-  const metrics = findMostWorkedInCategory(repos);
-  console.log(metrics);
+  const metrics = findMostWorkedInCategory(repoData);
+  await fetchSummaryForEachRepo(metrics);
   logger.debug('Metrics calculated successfully');
 };
 
@@ -110,7 +112,7 @@ const repos: RepoData = {
   },
 };
 
-const fetchSummaryForEachRepo = (newSummary: FrequencySummaryResult) => {
+const fetchSummaryForEachRepo = async (newSummary: FrequencySummaryResult) => {
   logger.debug('Fetching previous summary for each repo ...');
   Object.keys(newSummary).forEach(async (repoId) => {
     const previousSummary = await UserReviewSummaryService.getSummaryByRepoId(
@@ -126,6 +128,19 @@ const fetchSummaryForEachRepo = (newSummary: FrequencySummaryResult) => {
         review_summary: newSummary[repoId],
       });
       // TODO: add pipeline
+      logger.info(`Summary for repo ${repoId} has been created`);
+      logger.info('Initiating pipeline creation...');
+      const summary = newSummary[repoId];
+      Object.keys(summary).forEach(async (category) => {
+        const reviewers = [summary[category]];
+        await createOrUpdateWorkflowFile(
+          repo.owner.login,
+          repo.full_name.split('/')[1],
+          reviewers,
+          [category]
+        );
+      });
+      logger.info('Pipeline created');
       return;
     }
     if (areSummariesEqual(previousSummary.review_summary, newSummary[repoId])) {

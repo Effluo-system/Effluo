@@ -11,6 +11,7 @@
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
     "@types/node": "^22.9.1",
     "@types/node-schedule": "^2.1.7",
     "nodemon": "^3.1.7",
@@ -27,6 +28,7 @@
     "axios": "^1.7.8",
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",
+    "jsonwebtoken": "^9.0.2",
     "node-schedule": "^2.1.1",
     "octokit": "^3.1.2",
     "pg": "^8.13.1",

@@ -32,7 +32,6 @@ export class AuthService {
   ): Promise<AxiosResponse | undefined> {
     try {
       const accessToken = req.headers.authorization;
-      logger.info('Access token: ' + accessToken);
       const response = await axios.get('https://api.github.com/user', {
         headers: {
           Authorization: accessToken,
@@ -42,7 +41,7 @@ export class AuthService {
         return response.data;
       }
     } catch (error) {
-      //   logger.error(error);
+      logger.error(error);
       throw new Error('Cannot get the user');
     }
   }
