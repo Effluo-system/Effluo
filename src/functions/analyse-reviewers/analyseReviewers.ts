@@ -16,7 +16,7 @@ export const analyzeReviewers = async () => {
   const reviews = await ReviewService.getReviewsMadeInTheCurrentWeek();
   const repoData: UserReviewSummary = {};
 
-  logger.debug('Creating summary ...');
+  logger.info('Creating summary ...');
 
   // Populate the data structure
   reviews.forEach((review) => {
@@ -42,22 +42,26 @@ export const analyzeReviewers = async () => {
       repoData[repoId][user][label]++;
     });
   });
-  logger.debug('Summary created');
+  logger.info('Summary created');
   const metrics = findMostWorkedInCategory(repoData);
   await fetchSummaryForEachRepo(metrics);
-  logger.debug('Metrics calculated successfully');
+  logger.info('Metrics calculated successfully');
 };
 
 export const analyzeReviewersCron = (cron: String = '30 * * * * *') => {
   schedule.scheduleJob(cron as Spec, () => {
-    analyzeReviewers();
+    try {
+      analyzeReviewers();
+    } catch (err) {
+      logger.error('Error occurred while analyzing reviewers', err);
+    }
   });
 };
 
 function findMostWorkedInCategory(
   repos: UserReviewSummary
 ): FrequencySummaryResult {
-  logger.debug('Finding most frequent reviewers for each label...');
+  logger.info('Finding most frequent reviewers for each label...');
   return Object.keys(repos).reduce(
     (result: FrequencySummaryResult, repoId: string) => {
       const repo = repos[repoId];
@@ -113,7 +117,8 @@ const repos: RepoData = {
 };
 
 const fetchSummaryForEachRepo = async (newSummary: FrequencySummaryResult) => {
-  logger.debug('Fetching previous summary for each repo ...');
+  logger.info('Fetching previous summary for each repo ...');
+  console.log(newSummary);
   Object.keys(newSummary).forEach(async (repoId) => {
     const previousSummary = await UserReviewSummaryService.getSummaryByRepoId(
       repoId
