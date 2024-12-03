@@ -4,6 +4,7 @@ import { OctokitOutgoing } from '../../../config/OctokitOutgoing.ts';
 import { logger } from '../../../utils/logger.ts';
 import { Octokit } from '@octokit/rest';
 import { autoAssignReviewerWorkflow } from './Templates/autoAssignReviewer.ts';
+import { jwtToken } from '../../../utils/generateGithubJWT.ts';
 
 // Initialize Octokit with your personal access token
 
@@ -13,9 +14,9 @@ export async function createOrUpdateWorkflowFile(
   reviewers: string[],
   labels: string[]
 ) {
-  const filePath = `.github/workflows/auto-assign-reviewer-${labels.join(
-    '-'
-  )}-workflow.yml`; // Path to the workflow file
+  const filePath = `.github/workflows/auto-assign-reviewer-${labels
+    .map((label) => label.replace(/ /g, '-'))
+    .join('-')}-workflow.yml`; // Path to the workflow file
   const branch = 'main'; // Branch name to push the file to
 
   // Define the content of the workflow file
@@ -25,7 +26,9 @@ export async function createOrUpdateWorkflowFile(
   });
 
   try {
-    const octokit = OctokitOutgoing.getInstance();
+    const octokit = new Octokit({
+      auth: `Bearer ${jwtToken}`,
+    });
     // Check if the file already exists
     const installations = await octokit.apps.listInstallations();
     const tokenResponse = await octokit.apps.createInstallationAccessToken({

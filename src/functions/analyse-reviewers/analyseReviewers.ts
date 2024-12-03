@@ -118,7 +118,7 @@ const repos: RepoData = {
 
 const fetchSummaryForEachRepo = async (newSummary: FrequencySummaryResult) => {
   logger.info('Fetching previous summary for each repo ...');
-  console.log(newSummary);
+
   Object.keys(newSummary).forEach(async (repoId) => {
     const previousSummary = await UserReviewSummaryService.getSummaryByRepoId(
       repoId
