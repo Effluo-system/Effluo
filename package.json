@@ -11,6 +11,7 @@
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
     "@types/node": "^22.9.1",
     "@types/node-schedule": "^2.1.7",
     "nodemon": "^3.1.7",

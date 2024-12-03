@@ -25,7 +25,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(logIncomingTraffic);
 const server = http.createServer(middleware);
-app.use(express.raw({ type: 'application/json' }), middleware);
 
 export const startServer = async () => {
   try {

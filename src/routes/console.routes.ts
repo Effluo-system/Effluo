@@ -1,10 +1,10 @@
-import { Router } from 'express';
+import { Request, Response, Router } from 'express';
 import { PullRequestService } from '../services/pullRequest.service.ts';
 import { getToken } from '../utils/getToken.ts';
 import { RepoService } from '../services/repo.service.ts';
 const router = Router();
 
-router.get('/console/prs', async (req, res) => {
+router.get('/console/prs', async (req: Request, res: Response) => {
   try {
     const token = getToken(req);
     const prs = await PullRequestService.getPullRequestsByToken(token);
@@ -14,7 +14,7 @@ router.get('/console/prs', async (req, res) => {
   }
 });
 
-router.get('/console/repositories', async (req, res) => {
+router.get('/console/repositories', async (req: Request, res: Response) => {
   try {
     const token = getToken(req);
     const repos = await RepoService.getReposByToken(token);
