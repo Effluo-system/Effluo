@@ -1,6 +1,6 @@
 export const autoAssignReviewerWorkflow = (args: {
-  reviewers: string;
-  label: string;
+  reviewers: string[];
+  label: string[];
 }) => {
   const template = `
 name: Auto Assign Reviewer for ${args.label} PRs
@@ -16,11 +16,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Assign ${args.reviewers} as a reviewer
+    - name: Assign ${args.reviewers.map((r) => r)} as a reviewer
       uses: actions/github-script@v6
       with:
         script: |
-          const reviewers = [${args.reviewers}];
+          const reviewers = ${args.reviewers};
           const labels = context.payload.pull_request.labels.map(label => label.name.toLowerCase());
           if (labels.includes(${args.label})) {
             await github.rest.pulls.requestReviewers({
@@ -30,7 +30,9 @@ jobs:
               reviewers: reviewers,
             });
           } else {
-            console.log('No "${args.label}" label found; skipping reviewer assignment.');
+            console.log('No "${
+              args.label
+            }" label found; skipping reviewer assignment.');
           }
 `;
   return template;

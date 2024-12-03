@@ -8,6 +8,9 @@ import { logger } from '../utils/logger.ts';
 import express from 'express';
 import { logIncomingTraffic } from './loggerMiddleware.ts';
 import cors from 'cors';
+import http from 'http';
+import { createNodeMiddleware, Webhooks } from '@octokit/webhooks';
+import { app as octokitApp } from '../config/appConfig.ts';
 
 // const server = http.createServer(middleware);
 const localWebhookUrl = `http://localhost:${env.port}${PATH}`;
@@ -20,8 +23,9 @@ export const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(middleware);
 app.use(logIncomingTraffic);
+const server = http.createServer(middleware);
+app.use(express.raw({ type: 'application/json' }), middleware);
 
 export const startServer = async () => {
   try {
@@ -29,7 +33,11 @@ export const startServer = async () => {
 
     logger.info('Connected to the database....');
 
-    app.listen(env.port, () => {
+    server.listen(env.port, () => {
+      logger.info(`Server is listening for events at: ${localWebhookUrl}`);
+      logger.info('Press Ctrl + C to quit.');
+    });
+    app.listen(3001, () => {
       logger.info(`Server is listening for events at: ${localWebhookUrl}`);
       logger.info('Press Ctrl + C to quit.');
     });

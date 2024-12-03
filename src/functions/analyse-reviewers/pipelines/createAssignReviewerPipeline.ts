@@ -7,17 +7,20 @@ import { autoAssignReviewerWorkflow } from './Templates/autoAssignReviewer.ts';
 
 // Initialize Octokit with your personal access token
 
-export async function createOrUpdateWorkflowFile() {
-  const owner = 'Dinal-Senadheera'; // Replace with your GitHub username
-  const repo = 'Effluo-Playground'; // Replace with your repository name
+export async function createOrUpdateWorkflowFile(
+  owner: string,
+  repo: string,
+  reviewers: string[],
+  labels: string[]
+) {
   const filePath =
     '.github/workflows/auto-assign-reviewer-frontend-workflow.yml'; // Path to the workflow file
   const branch = 'main'; // Branch name to push the file to
 
   // Define the content of the workflow file
   const workflowYaml = autoAssignReviewerWorkflow({
-    reviewers: 'Navojith',
-    label: 'frontend',
+    reviewers: reviewers,
+    label: labels,
   });
 
   try {
