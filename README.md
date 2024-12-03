@@ -1,6 +1,6 @@
 # Effluo
 
-Welcome to effluo. We are still under early development.
+Welcome to effluo. We are still under early development
 
 # Tutorial
 

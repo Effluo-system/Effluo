@@ -1,6 +1,10 @@
 import { DataSourceOptions } from 'typeorm';
 import * as dotenv from 'dotenv';
 import { PullRequest } from '../entities/pullRequest.entity.ts';
+import { Review } from '../entities/review.entity.ts';
+import { Repo } from '../entities/repo.entity.ts';
+import { Owner } from '../entities/owner.entity.ts';
+import { UserReviewSummary } from '../entities/userReviewSummary.entity.ts';
 
 dotenv.config();
 
@@ -13,7 +17,7 @@ const dbConfig: DataSourceOptions = {
   database: process.env.DB_NAME,
   synchronize: true,
   logging: false,
-  entities: [PullRequest],
+  entities: [PullRequest, Review, Repo, Owner, UserReviewSummary],
 };
 
 export default dbConfig;

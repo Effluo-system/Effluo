@@ -10,7 +10,10 @@
     "dev": "nodemon --watch src --ext ts --exec \"node --loader ts-node/esm src/app.ts\""
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
     "@types/node": "^22.9.1",
+    "@types/node-schedule": "^2.1.7",
     "nodemon": "^3.1.7",
     "smee-client": "^2.0.1",
     "standard": "^17.0.0",
@@ -22,7 +25,11 @@
     "@octokit/app": "^15.1.1",
     "@octokit/rest": "^21.0.2",
     "@octokit/webhooks": "^13.4.1",
+    "axios": "^1.7.8",
+    "cors": "^2.8.5",
     "dotenv": "^16.0.3",
+    "jsonwebtoken": "^9.0.2",
+    "node-schedule": "^2.1.1",
     "octokit": "^3.1.2",
     "pg": "^8.13.1",
     "reflect-metadata": "^0.2.2",

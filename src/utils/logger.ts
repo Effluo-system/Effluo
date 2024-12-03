@@ -6,7 +6,10 @@ const logFormat = winston.format.printf(({ timestamp, level, message }) => {
 
 const colorizeMessage = winston.format((info) => {
   if (typeof info.message === 'string') {
-    info.message = winston.format.colorize().colorize(info.level, info.message);
+    if (info.level === 'error')
+      info.message = winston.format
+        .colorize()
+        .colorize(info.level, info.message);
     info.level = winston.format.colorize().colorize(info.level, info.level);
   }
   return info;

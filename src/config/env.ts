@@ -11,4 +11,6 @@ export const env = {
   secret: process.env.WEBHOOK_SECRET || '',
   enterpriseHostname: process.env.ENTERPRISE_HOSTNAME,
   port: process.env.PORT || 3000,
+  githubClientId: process.env.GITHUB_CLIENT_ID || '',
+  githubClientSecret: process.env.GITHUB_CLIENT_SECRET || '',
 };
