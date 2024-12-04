@@ -163,26 +163,5 @@ export class PullRequestService {
     }
   }
 
-  public static async getPullRequestComments(octokit: any, owner: string, repo: string, prNumber: number) {
-  try {
-    const { data: comments } = await octokit.rest.issues.listComments({
-      owner,
-      repo,
-      issue_number: prNumber,  
-    });
-
-    logger.info(`Retrieved ${comments.length} comments for PR #${prNumber}`);
-
-    comments.forEach((comment: { user: { login: string }; body: string }) => {
-      logger.info(`Comment by ${comment.user.login}: "${comment.body}"`);
-    });
-
-    return comments;
-  } 
-  catch (error) {
-    logger.error(error);
-    throw new Error(`Error getting pull request comments: ${error}`);
-  }
-}
-
+  
 }
