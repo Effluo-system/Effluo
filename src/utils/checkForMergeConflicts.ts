@@ -7,7 +7,7 @@ export async function checkForMergeConflicts(
   repo: any,
   pull_number: any,
   retries = 3,
-  retryDelay = 5000
+  retryDelay = 1500
 ) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -17,7 +17,10 @@ export async function checkForMergeConflicts(
         pull_number,
       });
 
-      if (pullRequest.mergeable !== null) {
+      if (pullRequest.mergeable === null) {
+        logger.info('Mergeable state is null. Retrying...');
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      } else {
         return pullRequest.mergeable;
       }
     } catch (error) {
