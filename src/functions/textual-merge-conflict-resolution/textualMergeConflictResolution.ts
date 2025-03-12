@@ -19,6 +19,10 @@ interface ConflictData {
 interface ResolutionData {
   filename: string;
   resolvedCode: string;
+  baseContent?: string;
+  oursContent?: string;
+  theirsContent?: string;
+  fileData?: ConflictData; // Include the original conflict data to access branch names
 }
 
 async function getFileContent(
@@ -140,7 +144,7 @@ function checkJsonConflicts(
   const ourLines = JSON.stringify(ourJson, null, 2).split('\n');
   const theirLines = JSON.stringify(theirJson, null, 2).split('\n');
 
-  const mergeResult = diff3(baseLines, ourLines, theirLines);
+  const mergeResult = diff3(ourLines, baseLines, theirLines);
   // Check if any chunk in the result has a conflict
   return mergeResult.some((chunk) => 'conflict' in chunk);
 }
@@ -179,7 +183,7 @@ function checkForConflicts(
   }
 
   // Run the diff3 merge algorithm
-  const mergeResult = diff3(baseLines, ourLines, theirLines);
+  const mergeResult = diff3(ourLines, baseLines, theirLines);
 
   // Check if diff3 reported a conflict
   return mergeResult.some((chunk) => 'conflict' in chunk);
@@ -400,6 +404,10 @@ export async function getResolution(
           resolutionData.push({
             filename: fileData.filename,
             resolvedCode: data.resolved_code,
+            baseContent: fileData.base.content,
+            oursContent: fileData.ours.content,
+            theirsContent: fileData.theirs.content,
+            fileData: fileData, // Include the original conflict data with branch names
           });
           logger.info(
             `Successfully resolved conflict for ${fileData.filename}`
@@ -430,26 +438,247 @@ export async function getResolution(
   }
 }
 
+// Resolution Comment Functions
+function generateGitStyleConflictView(
+  baseContent: string,
+  oursContent: string,
+  theirsContent: string,
+  fileData?: ConflictData
+): string {
+  // Split content into lines
+  const baseLines = baseContent.split('\n');
+  const ourLines = oursContent.split('\n');
+  const theirLines = theirsContent.split('\n');
+
+  // Use diff3 to find conflicts
+  const mergeResult = diff3(ourLines, baseLines, theirLines);
+
+  let conflictView = '';
+  let hasConflict = false;
+
+  // Process each chunk of the merge result
+  for (const chunk of mergeResult) {
+    if ('conflict' in chunk) {
+      // This is a conflict chunk
+      hasConflict = true;
+
+      // Show a standard three-way merge conflict format:
+      // <<<<<<< branch-name (Your branch)
+      // [your changes]
+      // ||||||| BASE
+      // [original code]
+      // =======
+      // [their changes]
+      // >>>>>>> target-branch-name (Target branch)
+
+      // Use the ref information from the FileVersion objects if available
+      const oursRef = fileData?.ours?.ref || 'YOURS';
+      const theirsRef = fileData?.theirs?.ref || 'THEIRS';
+
+      conflictView += `<<<<<<< ${oursRef} (Your branch)\n`;
+      if (
+        chunk.conflict &&
+        chunk.conflict.a &&
+        Array.isArray(chunk.conflict.a)
+      ) {
+        chunk.conflict.a.forEach((line) => (conflictView += line + '\n'));
+      }
+
+      conflictView += '||||||| BASE\n';
+      if (
+        chunk.conflict &&
+        chunk.conflict.o &&
+        Array.isArray(chunk.conflict.o)
+      ) {
+        chunk.conflict.o.forEach((line) => (conflictView += line + '\n'));
+      }
+
+      conflictView += '=======\n';
+      if (
+        chunk.conflict &&
+        chunk.conflict.b &&
+        Array.isArray(chunk.conflict.b)
+      ) {
+        chunk.conflict.b.forEach((line) => (conflictView += line + '\n'));
+      }
+
+      conflictView += `>>>>>>> ${theirsRef} (Target branch)\n`;
+    } else {
+      // This is a non-conflict chunk (array of lines)
+      if (Array.isArray(chunk)) {
+        for (const line of chunk) {
+          conflictView += line + '\n';
+        }
+      }
+    }
+  }
+
+  // If no conflicts were found by diff3, create a custom conflict view
+  if (!hasConflict) {
+    conflictView = '';
+
+    // Add some context at the beginning (up to 3 lines)
+    const contextLineCount = Math.min(3, baseLines.length);
+    for (let i = 0; i < contextLineCount; i++) {
+      conflictView += baseLines[i] + '\n';
+    }
+
+    // Add a simple diff
+    // Use the ref information from the FileVersion objects if available
+    const oursRef = fileData?.ours?.ref || 'YOURS';
+    const theirsRef = fileData?.theirs?.ref || 'THEIRS';
+
+    conflictView += `<<<<<<< ${oursRef} (Your branch)\n`;
+    conflictView += oursContent + '\n';
+    conflictView += '||||||| BASE\n';
+    conflictView += baseContent + '\n';
+    conflictView += '=======\n';
+    conflictView += theirsContent + '\n';
+    conflictView += `>>>>>>> ${theirsRef} (Target branch)\n`;
+  }
+
+  return conflictView;
+}
+
+function generateResolutionDiff(
+  originalContent: string,
+  resolvedContent: string,
+  branchName?: string
+): string {
+  const originalLines = originalContent.split('\n');
+  const resolvedLines = resolvedContent.split('\n');
+
+  // Use branch name in label if available
+  const displayLabel = branchName
+    ? `Resolution (from ${branchName})`
+    : 'Resolution';
+  let unifiedDiff = `--- Original\n+++ ${displayLabel}\n`;
+
+  // Generate the diff
+  let added = 0;
+  let removed = 0;
+
+  for (
+    let i = 0;
+    i < Math.max(originalLines.length, resolvedLines.length);
+    i++
+  ) {
+    const originalLine = i < originalLines.length ? originalLines[i] : '';
+    const resolvedLine = i < resolvedLines.length ? resolvedLines[i] : '';
+
+    if (originalLine !== resolvedLine) {
+      if (originalLine) {
+        unifiedDiff += `-${originalLine}\n`;
+        removed++;
+      }
+      if (resolvedLine) {
+        unifiedDiff += `+${resolvedLine}\n`;
+        added++;
+      }
+    } else {
+      unifiedDiff += ` ${originalLine}\n`;
+    }
+  }
+
+  return unifiedDiff;
+}
+
 export async function createResolutionComment(
   octokit: Octokit,
   owner: string,
   repo: string,
   pullNumber: number,
   filename: string,
-  resolvedCode: string
+  resolvedCode: string,
+  baseContent?: string,
+  oursContent?: string,
+  theirsContent?: string,
+  fileData?: ConflictData
 ) {
-  const commentBody = `
-  ### Suggested Resolution for \`${filename}\`
-  
-  \`\`\`
-  ${resolvedCode}
-  \`\`\`
-  
-  This is an AI-suggested resolution for the merge conflict. Please review carefully before applying.
-  You can copy this code and use it to resolve the conflict manually.
-  
-  Note: This is an automated suggestion. Please review the changes carefully before merging.
-  `;
+  let commentBody = `
+### Resolution Summary for \`${filename}\`
+`;
+
+  // Add content only if we have all three versions
+  if (baseContent && oursContent && theirsContent) {
+    // 1. First show the Git-style conflict view
+    const conflictView = generateGitStyleConflictView(
+      baseContent,
+      oursContent,
+      theirsContent,
+      fileData
+    );
+
+    // Use branch names in unified diffs if available
+    const oursBranchName = fileData?.ours?.ref;
+    const theirsBranchName = fileData?.theirs?.ref;
+
+    const oursDiff = generateResolutionDiff(
+      oursContent,
+      resolvedCode,
+      oursBranchName
+    );
+
+    const theirsDiff = generateResolutionDiff(
+      theirsContent,
+      resolvedCode,
+      theirsBranchName
+    );
+
+    commentBody += `
+#### Git-style Conflict View
+<details>
+<summary>Click to see the original conflict</summary>
+
+\`\`\`diff
+${conflictView}
+\`\`\`
+</details>
+
+#### AI Resolution
+<details>
+<summary>Click to see the resolved code</summary>
+
+\`\`\`
+${resolvedCode}
+\`\`\`
+</details>
+
+#### Resolution Changes
+
+<details open>
+<summary>Changes from your branch (${
+      oursBranchName || 'YOURS'
+    }) to resolution</summary>
+
+\`\`\`diff
+${oursDiff}
+\`\`\`
+</details>
+
+<details open>
+<summary>Changes from target branch (${
+      theirsBranchName || 'THEIRS'
+    }) to resolution</summary>
+
+\`\`\`diff
+${theirsDiff}
+\`\`\`
+</details>
+`;
+  } else {
+    // Fallback if we don't have all three versions
+    commentBody += `
+#### Resolved Code
+\`\`\`
+${resolvedCode}
+\`\`\`
+`;
+  }
+
+  commentBody += `
+Note: This is an automated suggestion. Please review the changes carefully before merging.
+`;
 
   await octokit.rest.issues.createComment({
     owner,
@@ -457,4 +686,88 @@ export async function createResolutionComment(
     issue_number: pullNumber,
     body: commentBody,
   });
+}
+
+/**
+ * Gets the conflict data for files with merge conflicts,
+ * including information about the branch names.
+ * This function is extracted to avoid duplicate code.
+ */
+export async function getConflictingData(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  pullNumber: number
+): Promise<ConflictData[]> {
+  try {
+    // Get PR details
+    const { data: pr } = await octokit.rest.pulls.get({
+      owner,
+      repo,
+      pull_number: pullNumber,
+    });
+
+    const conflictingFilenames = await getConflictingFiles(
+      octokit,
+      owner,
+      repo,
+      pullNumber
+    );
+
+    if (conflictingFilenames.length === 0) {
+      logger.info('No conflicting files found');
+      return [];
+    }
+
+    const conflictData: ConflictData[] = [];
+
+    // Gather conflict data for all files
+    for (const filename of conflictingFilenames) {
+      try {
+        // Get common ancestor commit (merge base)
+        const { data: compareData } = await octokit.rest.repos.compareCommits({
+          owner,
+          repo,
+          base: pr.base.sha,
+          head: pr.head.sha,
+        });
+
+        const mergeBase = compareData.merge_base_commit.sha;
+
+        // Get all three versions of the file
+        const [baseContent, oursContent, theirsContent] = await Promise.all([
+          getFileContent(octokit, owner, repo, filename, mergeBase),
+          getFileContent(octokit, owner, repo, filename, pr.head.sha),
+          getFileContent(octokit, owner, repo, filename, pr.base.sha),
+        ]);
+
+        conflictData.push({
+          filename: filename,
+          base: {
+            content: baseContent,
+            sha: mergeBase,
+            ref: 'merge-base',
+          },
+          ours: {
+            content: oursContent,
+            sha: pr.head.sha,
+            ref: pr.head.ref, // This includes the actual branch name
+          },
+          theirs: {
+            content: theirsContent,
+            sha: pr.base.sha,
+            ref: pr.base.ref, // This includes the actual target branch name
+          },
+        });
+      } catch (error) {
+        logger.error(`Failed to process file ${filename}:`, error);
+        continue; // Skip this file and continue with others
+      }
+    }
+
+    return conflictData;
+  } catch (error) {
+    logger.error('Failed to process conflict files:', error);
+    return [];
+  }
 }

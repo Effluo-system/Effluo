@@ -56,7 +56,11 @@ app.webhooks.on(
             payload.repository.name,
             payload.pull_request.number,
             conflict.filename,
-            conflict.resolvedCode
+            conflict.resolvedCode,
+            conflict.baseContent,
+            conflict.oursContent,
+            conflict.theirsContent,
+            conflict.fileData
           );
         }
       } else {
