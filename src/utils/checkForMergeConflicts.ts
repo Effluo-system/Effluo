@@ -6,7 +6,7 @@ export async function checkForMergeConflicts(
   owner: any,
   repo: any,
   pull_number: any,
-  retries = 3,
+  retries = 5,
   retryDelay = 1500
 ) {
   for (let i = 0; i < retries; i++) {

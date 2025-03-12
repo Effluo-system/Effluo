@@ -1,7 +1,7 @@
 import { app } from '../config/appConfig.ts';
 import {
   createResolutionComment,
-  extractAndSendConflictFiles,
+  getResolution,
 } from '../functions/textual-merge-conflict-resolution/textualMergeConflictResolution.ts';
 import type { CustomError } from '../types/common.d.ts';
 import { checkForMergeConflicts } from '../utils/checkForMergeConflicts.ts';
@@ -37,7 +37,7 @@ app.webhooks.on(
           body: 'This PR has a merge conflict. Please resolve the conflict and push the changes.❌',
         });
 
-        const resolution = await extractAndSendConflictFiles(
+        const resolution = await getResolution(
           octokit as any,
           payload.repository.owner.login,
           payload.repository.name,
