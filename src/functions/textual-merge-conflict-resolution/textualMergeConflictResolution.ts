@@ -1,4 +1,5 @@
 import { Octokit } from '@octokit/rest';
+import diff3 from 'diff3';
 import { Base64 } from 'js-base64';
 import { logger } from '../../utils/logger.ts';
 
@@ -43,67 +44,145 @@ async function getFileContent(
   }
 }
 
-// Helper function to detect if changes from two branches overlap (indicating a potential conflict)
-function detectOverlappingChanges(
-  baseContent: string,
-  oursContent: string,
-  theirsContent: string
+function isBinaryFile(filename: string): boolean {
+  const binaryExtensions = [
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.gif',
+    '.ico',
+    '.webp',
+    '.pdf',
+    '.zip',
+    '.gz',
+    '.tar',
+    '.ttf',
+    '.woff',
+    '.woff2',
+    '.eot',
+    '.mp3',
+    '.mp4',
+    '.avi',
+    '.mov',
+    '.exe',
+    '.dll',
+    '.so',
+    '.o',
+  ];
+
+  return binaryExtensions.some((ext) => filename.toLowerCase().endsWith(ext));
+}
+
+function isJsonFile(filename: string): boolean {
+  return (
+    filename.endsWith('.json') ||
+    filename === '.eslintrc' ||
+    filename === '.babelrc' ||
+    filename === '.prettierrc'
+  );
+}
+
+function checkDependencyConflicts(
+  baseJson: any,
+  ourJson: any,
+  theirJson: any
 ): boolean {
-  // Split content into lines for comparison
-  const baseLines = baseContent.split('\n');
-  const ourLines = oursContent.split('\n');
-  const theirLines = theirsContent.split('\n');
+  const depTypes = ['dependencies', 'devDependencies', 'peerDependencies'];
 
-  // Use a simple line-by-line comparison to detect potential conflicts
-  let ourChangedLines = new Set<number>();
-  let theirChangedLines = new Set<number>();
-
-  // Identify lines that were changed in our branch
-  for (let i = 0; i < Math.max(baseLines.length, ourLines.length); i++) {
-    const baseLine = baseLines[i] || '';
-    const ourLine = ourLines[i] || '';
-
-    if (baseLine !== ourLine) {
-      ourChangedLines.add(i);
+  for (const depType of depTypes) {
+    if (!baseJson[depType] && !ourJson[depType] && !theirJson[depType]) {
+      continue;
     }
-  }
 
-  // Identify lines that were changed in their branch
-  for (let i = 0; i < Math.max(baseLines.length, theirLines.length); i++) {
-    const baseLine = baseLines[i] || '';
-    const theirLine = theirLines[i] || '';
+    const baseDeps = baseJson[depType] || {};
+    const ourDeps = ourJson[depType] || {};
+    const theirDeps = theirJson[depType] || {};
 
-    if (baseLine !== theirLine) {
-      theirChangedLines.add(i);
-    }
-  }
-
-  // Check for overlapping changes (changes to the same lines)
-  for (const lineNum of ourChangedLines) {
-    if (theirChangedLines.has(lineNum)) {
-      return true; // Conflict found
-    }
-  }
-
-  // Also check if line count changed significantly in both branches
-  // This could indicate section insertions/deletions that might conflict
-  const ourLineDiff = Math.abs(ourLines.length - baseLines.length);
-  const theirLineDiff = Math.abs(theirLines.length - baseLines.length);
-
-  if (ourLineDiff > 0 && theirLineDiff > 0) {
-    // Both branches changed the number of lines, check if changes are close to each other
-    // This is a heuristic that might catch some additional conflicts
-    for (const ourLine of ourChangedLines) {
-      for (const theirLine of theirChangedLines) {
-        if (Math.abs(ourLine - theirLine) < 5) {
-          // Within 5 lines of each other
-          return true;
-        }
+    // Find packages modified in both branches
+    for (const pkg in ourDeps) {
+      if (
+        pkg in theirDeps &&
+        ourDeps[pkg] !== theirDeps[pkg] &&
+        (!(pkg in baseDeps) || ourDeps[pkg] !== baseDeps[pkg]) &&
+        (!(pkg in baseDeps) || theirDeps[pkg] !== baseDeps[pkg])
+      ) {
+        // Both branches changed the same package to different versions
+        return true;
       }
     }
   }
 
   return false;
+}
+
+function checkJsonConflicts(
+  baseContent: string,
+  oursContent: string,
+  theirsContent: string
+): boolean {
+  // Parse JSON content
+  const baseJson = JSON.parse(baseContent);
+  const ourJson = JSON.parse(oursContent);
+  const theirJson = JSON.parse(theirsContent);
+
+  // For package.json, specifically check dependencies and devDependencies
+  if (
+    'dependencies' in baseJson ||
+    'devDependencies' in baseJson ||
+    'peerDependencies' in baseJson
+  ) {
+    // Check for dependency conflicts
+    return checkDependencyConflicts(baseJson, ourJson, theirJson);
+  }
+
+  // Run diff3 on the stringified JSON with consistent formatting
+  const baseLines = JSON.stringify(baseJson, null, 2).split('\n');
+  const ourLines = JSON.stringify(ourJson, null, 2).split('\n');
+  const theirLines = JSON.stringify(theirJson, null, 2).split('\n');
+
+  const mergeResult = diff3(baseLines, ourLines, theirLines);
+  // Check if any chunk in the result has a conflict
+  return mergeResult.some((chunk) => 'conflict' in chunk);
+}
+
+function checkForConflicts(
+  baseContent: string,
+  oursContent: string,
+  theirsContent: string,
+  filename: string
+): boolean {
+  // Split content into lines
+  const baseLines = baseContent.split('\n');
+  const ourLines = oursContent.split('\n');
+  const theirLines = theirsContent.split('\n');
+
+  // Handle empty files correctly
+  if (
+    (baseLines.length === 0 && ourLines.length === 0) ||
+    (baseLines.length === 0 && theirLines.length === 0) ||
+    (ourLines.length === 0 && theirLines.length === 0)
+  ) {
+    return false;
+  }
+
+  // Special handling for JSON files
+  if (isJsonFile(filename)) {
+    try {
+      // For JSON files, also check if the structure changed significantly
+      return checkJsonConflicts(baseContent, oursContent, theirsContent);
+    } catch (error) {
+      logger.warn(
+        `Error analyzing JSON file ${filename}, falling back to diff3`
+      );
+      // Fall back to diff3 if JSON parsing fails
+    }
+  }
+
+  // Run the diff3 merge algorithm
+  const mergeResult = diff3(baseLines, ourLines, theirLines);
+
+  // Check if diff3 reported a conflict
+  return mergeResult.some((chunk) => 'conflict' in chunk);
 }
 
 async function getConflictingFiles(
@@ -119,91 +198,90 @@ async function getConflictingFiles(
       repo,
       pull_number: pullNumber,
     });
-    // If PR is not mergeable (or null/undefined), we need to find the conflicting files
-    logger.info(
-      `PR #${pullNumber} may have conflicts, mergeable status: ${pr.mergeable}`
-    );
+
+    logger.info(`PR #${pullNumber} mergeable status: ${pr.mergeable}`);
+
+    // If PR is already mergeable, no conflicts
+    if (pr.mergeable === true) {
+      logger.info(`PR #${pullNumber} is mergeable, no conflicts to resolve`);
+      return [];
+    }
+
     // Get list of files in PR
     const { data: files } = await octokit.rest.pulls.listFiles({
       owner,
       repo,
       pull_number: pullNumber,
     });
-    // Files that might have conflicts (we'll verify each one)
+
+    // Files that might have conflicts (only check modified files)
     const modifiedFiles = files.filter((file) => file.status === 'modified');
     if (modifiedFiles.length === 0) {
       logger.info('No modified files found in PR');
       return [];
     }
+
     logger.info(
       `Checking ${modifiedFiles.length} modified files for conflicts`
     );
-    // Check each file for conflicts using the /merge reference
+
+    // Find the merge base (common ancestor) of the two branches
+    const { data: compareData } = await octokit.rest.repos.compareCommits({
+      owner,
+      repo,
+      base: pr.base.sha,
+      head: pr.head.sha,
+    });
+    const mergeBase = compareData.merge_base_commit.sha;
+
+    logger.info(`Found merge base commit: ${mergeBase}`);
+
+    // Check each file for conflicts
     const conflictingFiles: string[] = [];
 
-    // If PR is not mergeable, check each modified file for conflicts
-    if (pr.mergeable === false) {
-      logger.info(
-        `PR #${pullNumber} is not mergeable, identifying conflicting files`
-      );
-
-      for (const file of modifiedFiles) {
-        try {
-          // Find the merge base (common ancestor) of the two branches
-          const { data: compareData } = await octokit.rest.repos.compareCommits(
-            {
-              owner,
-              repo,
-              base: pr.base.sha,
-              head: pr.head.sha,
-            }
-          );
-          const mergeBase = compareData.merge_base_commit.sha;
-
-          // Get all three versions of the file
-          const [baseContent, oursContent, theirsContent] = await Promise.all([
-            getFileContent(octokit, owner, repo, file.filename, mergeBase),
-            getFileContent(octokit, owner, repo, file.filename, pr.head.sha),
-            getFileContent(octokit, owner, repo, file.filename, pr.base.sha),
-          ]);
-
-          // Check if the file has conflicts by looking for overlapping changes
-          const hasConflict = detectOverlappingChanges(
-            baseContent,
-            oursContent,
-            theirsContent
-          );
-
-          if (hasConflict) {
-            logger.info(`Conflict detected in file: ${file.filename}`);
-            conflictingFiles.push(file.filename);
-          }
-        } catch (error) {
-          logger.error(
-            `Error checking file ${file.filename} for conflicts:`,
-            error
-          );
-          // If we can't properly check the file, assume it might be conflicting
-          // This could happen if a file was deleted in one branch
-          logger.info(
-            `Adding ${file.filename} to conflict list due to error checking`
-          );
-          conflictingFiles.push(file.filename);
+    for (const file of modifiedFiles) {
+      try {
+        // Skip binary files - diff3 only works on text
+        if (isBinaryFile(file.filename)) {
+          logger.info(`Skipping binary file: ${file.filename}`);
+          continue;
         }
-      }
-    } else if (pr.mergeable === null) {
-      // GitHub is still calculating mergeable status, be conservative and check all files
-      logger.info(
-        `PR #${pullNumber} mergeable status is null, checking all modified files`
-      );
-      for (const file of modifiedFiles) {
-        logger.info(`Potential conflict in file: ${file.filename}`);
+
+        // Get all three versions of the file
+        const [baseContent, oursContent, theirsContent] = await Promise.all([
+          getFileContent(octokit, owner, repo, file.filename, mergeBase),
+          getFileContent(octokit, owner, repo, file.filename, pr.head.sha),
+          getFileContent(octokit, owner, repo, file.filename, pr.base.sha),
+        ]);
+
+        // Check for conflicts using diff3
+        const hasConflict = checkForConflicts(
+          baseContent,
+          oursContent,
+          theirsContent,
+          file.filename
+        );
+
+        if (hasConflict) {
+          logger.info(`Conflict detected in file: ${file.filename}`);
+          conflictingFiles.push(file.filename);
+        } else {
+          logger.info(`No conflicts in file: ${file.filename}`);
+        }
+      } catch (error) {
+        logger.error(
+          `Error checking file ${file.filename} for conflicts:`,
+          error
+        );
+        // If we can't properly check the file, assume it might be conflicting
+        logger.info(
+          `Adding ${file.filename} to conflict list due to error checking`
+        );
         conflictingFiles.push(file.filename);
       }
-    } else {
-      logger.info(`PR #${pullNumber} is mergeable, no conflicts to resolve`);
     }
 
+    logger.info(`Found ${conflictingFiles.length} files with conflicts`);
     return conflictingFiles;
   } catch (error) {
     logger.error('Error detecting conflicting files:', error);
