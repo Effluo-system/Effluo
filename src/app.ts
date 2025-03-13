@@ -11,6 +11,7 @@ import authRouter from './routes/auth.routes.ts';
 import consoleRouter from './routes/console.routes.ts';
 import { logger } from './utils/logger.ts';
 import { createWorkflowFileFromTemplate } from './functions/analyse-reviewers/pipelines/createAssignReviewerPipeline.ts';
+import { calculateReviewDifficultyOfPR } from './functions/workload-calculation/workloadCalculation.ts';
 
 const { data } = await octokitApp.octokit.request('/app');
 octokitApp.octokit.log.debug(`Authenticated as '${data.name}'`);
@@ -23,4 +24,4 @@ app.get('/health', (req, res) => {
 app.use(authRouter);
 app.use(consoleRouter);
 
-analyzeReviewersCron();
+// analyzeReviewersCron();

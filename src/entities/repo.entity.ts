@@ -1,6 +1,14 @@
-import { Entity, Column, ManyToOne, OneToOne, Relation } from 'typeorm';
+import {
+  Entity,
+  Column,
+  ManyToOne,
+  OneToOne,
+  Relation,
+  OneToMany,
+} from 'typeorm';
 import { Owner } from './owner.entity.ts';
 import { UserReviewSummary } from './userReviewSummary.entity.ts';
+import { Issue } from './issue.entity.ts';
 
 @Entity()
 export class Repo {
@@ -23,4 +31,9 @@ export class Repo {
     nullable: true,
   })
   user_review_summary!: Relation<UserReviewSummary> | null;
+
+  @OneToMany(() => Issue, (issue) => issue.repo, {
+    cascade: false,
+  })
+  issues!: Relation<Issue[]> | null;
 }
