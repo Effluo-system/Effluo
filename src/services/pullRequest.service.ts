@@ -67,7 +67,8 @@ export class PullRequestService {
       | PullRequestOpenedEvent
       | PullRequestReopenedEvent
       | PullRequestReviewSubmittedEvent
-      | PullRequestLabeledEvent
+      | PullRequestLabeledEvent,
+    reviewDifficulty: number
   ): Promise<PullRequest> {
     try {
       let repo = await RepoService.getRepoById(
@@ -117,6 +118,7 @@ export class PullRequestService {
         url: payload?.pull_request?.html_url,
         reviews: [],
         labels: payload?.pull_request?.labels?.map((label) => label.name),
+        reviewDifficulty: reviewDifficulty,
       });
       logger.info('Pull request created successfully');
       return pr;

@@ -41,7 +41,7 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
     );
 
     const conflictAnalysis = await analyzeConflicts(files);
-    // const reviewDifficulty = await calculateReviewDifficultyOfPR(files);
+    const reviewDifficulty = await calculateReviewDifficultyOfPR(files);
 
     // Post conflict analysis as a comment
     await octokit.rest.issues.createComment({
@@ -52,7 +52,10 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
     });
     // Semantic conflict detection, End ---------------------------------------------------------------------------------
 
-    await PullRequestService.initiatePullRequestCreationFlow(payload);
+    await PullRequestService.initiatePullRequestCreationFlow(
+      payload,
+      reviewDifficulty
+    );
   } catch (error) {
     const customError = error as CustomError;
     if (customError.response) {
@@ -73,9 +76,6 @@ app.webhooks.on('pull_request.reopened', async ({ octokit, payload }) => {
     let pr = await PullRequestService.getPullRequestById(
       payload?.pull_request?.id.toString()
     );
-    if (!pr) {
-      await PullRequestService.initiatePullRequestCreationFlow(payload);
-    }
 
     // Semantic conflict detection, Start ---------------------------------------------------------------------------------
     const files = await analyzePullRequest(
@@ -88,6 +88,13 @@ app.webhooks.on('pull_request.reopened', async ({ octokit, payload }) => {
     );
 
     const conflictAnalysis = await analyzeConflicts(files);
+    const reviewDifficulty = await calculateReviewDifficultyOfPR(files);
+    if (!pr) {
+      await PullRequestService.initiatePullRequestCreationFlow(
+        payload,
+        reviewDifficulty
+      );
+    }
 
     // Post conflict analysis as a comment
     await octokit.rest.issues.createComment({
