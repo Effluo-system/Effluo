@@ -1,11 +1,5 @@
 import { app } from '../config/appConfig.ts';
-import { Difficulty } from '../constants/common.constants.ts';
-import { analyzeReviewers } from '../functions/analyse-reviewers/analyseReviewers.ts';
 import { IssueService } from '../services/issue.service.ts';
-import { OwnerService } from '../services/owner.service.ts';
-import { PullRequestService } from '../services/pullRequest.service.ts';
-import { RepoService } from '../services/repo.service.ts';
-import { ReviewService } from '../services/review.service.ts';
 import type { CustomError } from '../types/common.ts';
 import { logger } from '../utils/logger.ts';
 
@@ -35,7 +29,7 @@ app.webhooks.on(
     logger.info(`Received a close issue event ${payload.issue}`);
     try {
       await IssueService.deleteIssue(payload?.issue?.id?.toString());
-      logger.info('Issue reopened successfully');
+      logger.info('Issue removed successfully');
     } catch (error) {
       const customError = error as CustomError;
       if (customError.response) {

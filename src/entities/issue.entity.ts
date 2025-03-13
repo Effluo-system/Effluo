@@ -25,7 +25,7 @@ export class Issue {
   @Column({ nullable: false, type: 'int', default: 0 })
   weight!: number;
 
-  @OneToOne(() => Repo, (repo) => repo.owner, {
+  @ManyToOne(() => Repo, (repo) => repo.owner, {
     cascade: true,
     nullable: true,
   })

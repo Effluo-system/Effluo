@@ -3,6 +3,7 @@ import './events/push.ts';
 import './events/onError.ts';
 import './events/mergeConflict.ts';
 import './events/reviewPR.ts';
+import './events/issue.ts';
 import { startServer } from './server/server.ts';
 import { app as octokitApp } from './config/appConfig.ts';
 import { analyzeReviewersCron } from './functions/analyse-reviewers/analyseReviewers.ts';

@@ -102,6 +102,7 @@ export class IssueService {
         url: payload?.repository?.url,
         user_review_summary: null,
       });
+      logger.info('Repo created successfully');
     }
     const labels = payload?.issue?.labels?.map((label) => label.name);
     let weight = 0;
@@ -113,7 +114,7 @@ export class IssueService {
       assignees: payload?.issue?.assignees?.map((assignee) => assignee.login),
       id: payload?.issue?.id?.toString(),
       labels: labels ?? [],
-      weight: weight,
+      weight: weight > 0 ? weight : 3,
       repo: repo,
     });
   }
