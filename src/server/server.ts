@@ -27,7 +27,6 @@ const server = http.createServer(middleware);
 export const startServer = async () => {
   try {
     await AppDataSource.initialize();
-
     logger.info('Connected to the database....');
 
     server.listen(env.port, () => {

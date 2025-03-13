@@ -1,6 +1,9 @@
 import { Octokit } from '@octokit/rest';
 import diff3 from 'diff3';
 import { Base64 } from 'js-base64';
+import { MergeConflictService } from '../../services/mergeConflict.service.ts';
+import { OwnerService } from '../../services/owner.service.ts';
+import { RepoService } from '../../services/repo.service.ts';
 import { logger } from '../../utils/logger.ts';
 
 interface FileVersion {
@@ -583,6 +586,82 @@ function generateResolutionDiff(
   return unifiedDiff;
 }
 
+async function storeResolution(
+  owner: string,
+  repoName: string,
+  pullNumber: number,
+  filename: string,
+  resolvedCode: string,
+  baseContent?: string,
+  oursContent?: string,
+  theirsContent?: string,
+  fileData?: ConflictData
+) {
+  try {
+    // First try to get the repo entity
+    let repoEntity = await RepoService.getRepoByOwnerAndName(owner, repoName);
+
+    // If repository doesn't exist in our database, create it
+    if (!repoEntity) {
+      logger.info(
+        `Repository ${owner}/${repoName} not found in database, creating it`
+      );
+
+      // First check if owner exists, create if not
+      let ownerEntity = await OwnerService.getOwnersById(owner);
+      if (!ownerEntity) {
+        ownerEntity = await OwnerService.createOwner({
+          id: owner,
+          login: owner,
+          url: `https://github.com/${owner}`,
+          repos: [],
+        });
+      }
+
+      // Create repository
+      repoEntity = await RepoService.createRepo({
+        id: `${owner}/${repoName}`,
+        full_name: repoName,
+        url: `https://github.com/${owner}/${repoName}`,
+        owner: ownerEntity,
+        user_review_summary: null,
+      });
+    }
+
+    // Stringify content for storage
+    resolvedCode = JSON.stringify(resolvedCode);
+    baseContent = JSON.stringify(baseContent);
+    oursContent = JSON.stringify(oursContent);
+    theirsContent = JSON.stringify(theirsContent);
+
+    // Prepare data for storage
+    const resolutionToStore = {
+      filename,
+      resolvedCode,
+      baseContent,
+      oursContent,
+      theirsContent,
+      oursBranch: fileData?.ours?.ref,
+      theirsBranch: fileData?.theirs?.ref,
+    };
+
+    // Store the resolution
+    if (repoEntity?.id) {
+      await MergeConflictService.storeResolutionsForPR(
+        repoEntity.id,
+        pullNumber,
+        [resolutionToStore]
+      );
+      logger.info(`Stored resolution for ${filename} in PR #${pullNumber}`);
+    } else {
+      logger.error(`Repository ID is undefined for ${owner}/${repoName}`);
+    }
+  } catch (error) {
+    logger.error(`Failed to store resolution for ${filename}:`, error);
+    // Don't fail the whole operation if storage fails
+  }
+}
+
 export async function createResolutionComment(
   octokit: Octokit,
   owner: string,
@@ -680,12 +759,25 @@ ${resolvedCode}
 Note: This is an automated suggestion. Please review the changes carefully before merging.
 `;
 
+  // Create the comment in GitHub
   await octokit.rest.issues.createComment({
     owner,
     repo,
     issue_number: pullNumber,
     body: commentBody,
   });
+
+  await storeResolution(
+    owner,
+    repo,
+    pullNumber,
+    filename,
+    resolvedCode,
+    baseContent,
+    oursContent,
+    theirsContent,
+    fileData
+  );
 }
 
 /**
