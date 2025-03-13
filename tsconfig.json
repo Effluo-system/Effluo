@@ -14,7 +14,12 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.yaml"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.d.ts",
+    "src/**/*.yaml",
+    "src/database/db.config.js"
+  ],
   "exclude": ["node_modules"],
   "ts-node": {
     "files": true
