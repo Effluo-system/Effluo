@@ -9,3 +9,10 @@ export interface CustomError {
   // Otherwise, assume it's a generic error
   message?: string;
 }
+
+export interface PRDiffFile {
+  filename: string;
+  baseContent: string;
+  headContent: string;
+  referencedFiles: { path: string; content: string }[];
+}

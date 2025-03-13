@@ -8,8 +8,9 @@ import { RepoService } from '../services/repo.service.ts';
 import { OwnerService } from '../services/owner.service.ts';
 import {
   analyzePullRequest,
-  analyzeConflicts
+  analyzeConflicts,
 } from '../functions/semantic-conflict-detection/semanticConflictDetection.ts';
+import { calculateReviewDifficultyOfPR } from '../functions/workload-calculation/workloadCalculation.ts';
 
 const messageForNewPRs = fs.readFileSync('./src/messages/message.md', 'utf8');
 const messageForNewLabel = fs.readFileSync(
@@ -28,9 +29,9 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
       issue_number: payload.pull_request.number,
       body: messageForNewPRs,
     });
-    
-     // Semantic conflict detection, Start ---------------------------------------------------------------------------------
-     const files = await analyzePullRequest(
+
+    // Semantic conflict detection, Start ---------------------------------------------------------------------------------
+    const files = await analyzePullRequest(
       octokit,
       payload.repository.owner.login,
       payload.repository.name,
@@ -38,9 +39,10 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
       payload.pull_request.base.ref,
       payload.pull_request.head.ref
     );
-    
+
     const conflictAnalysis = await analyzeConflicts(files);
-    
+    // const reviewDifficulty = await calculateReviewDifficultyOfPR(files);
+
     // Post conflict analysis as a comment
     await octokit.rest.issues.createComment({
       owner: payload.repository.owner.login,
@@ -75,8 +77,8 @@ app.webhooks.on('pull_request.reopened', async ({ octokit, payload }) => {
       await PullRequestService.initiatePullRequestCreationFlow(payload);
     }
 
-     // Semantic conflict detection, Start ---------------------------------------------------------------------------------
-     const files = await analyzePullRequest(
+    // Semantic conflict detection, Start ---------------------------------------------------------------------------------
+    const files = await analyzePullRequest(
       octokit,
       payload.repository.owner.login,
       payload.repository.name,
@@ -84,9 +86,9 @@ app.webhooks.on('pull_request.reopened', async ({ octokit, payload }) => {
       payload.pull_request.base.ref,
       payload.pull_request.head.ref
     );
-    
+
     const conflictAnalysis = await analyzeConflicts(files);
-    
+
     // Post conflict analysis as a comment
     await octokit.rest.issues.createComment({
       owner: payload.repository.owner.login,
@@ -95,7 +97,6 @@ app.webhooks.on('pull_request.reopened', async ({ octokit, payload }) => {
       body: conflictAnalysis,
     });
     // Semantic conflict detection, End ---------------------------------------------------------------------------------
-    
   } catch (error) {
     const customError = error as CustomError;
     if (customError.response) {

@@ -1,5 +1,6 @@
 import axios from 'axios'; // For making API calls
 import { stream } from 'winston';
+import { PRDiffFile } from '../../types/common';
 
 // Type for GitHub content response
 interface GitHubContentResponse {
@@ -34,7 +35,10 @@ export async function fetchFileContent(
     const fileContent = response.data as GitHubContentResponse;
     return Buffer.from(fileContent.content, 'base64').toString('utf8');
   } catch (error) {
-    console.error(`Error fetching content for ${filePath} on branch ${branch}:`, error);
+    console.error(
+      `Error fetching content for ${filePath} on branch ${branch}:`,
+      error
+    );
     return null;
   }
 }
@@ -58,7 +62,13 @@ export async function fetchReferencedFiles(
 ): Promise<{ path: string; content: string }[]> {
   const files = await Promise.all(
     filePaths.map(async (filePath) => {
-      const content = await fetchFileContent(octokit, owner, repo, filePath, branch);
+      const content = await fetchFileContent(
+        octokit,
+        owner,
+        repo,
+        filePath,
+        branch
+      );
       return { path: filePath, content: content || '' };
     })
   );
@@ -72,12 +82,7 @@ export async function analyzePullRequest(
   prNumber: number,
   baseBranch: string,
   headBranch: string
-): Promise<{
-  filename: string;
-  baseContent: string;
-  headContent: string;
-  referencedFiles: { path: string; content: string }[];
-}[]> {
+): Promise<PRDiffFile[]> {
   const changedFiles = await octokit.rest.pulls.listFiles({
     owner,
     repo,
@@ -88,11 +93,29 @@ export async function analyzePullRequest(
   for (const file of changedFiles.data) {
     const { filename } = file;
 
-    const baseContent = await fetchFileContent(octokit, owner, repo, filename, baseBranch);
-    const headContent = await fetchFileContent(octokit, owner, repo, filename, headBranch);
+    const baseContent = await fetchFileContent(
+      octokit,
+      owner,
+      repo,
+      filename,
+      baseBranch
+    );
+    const headContent = await fetchFileContent(
+      octokit,
+      owner,
+      repo,
+      filename,
+      headBranch
+    );
 
     const dependencies = baseContent ? getReferencedFiles(baseContent) : [];
-    const referencedFiles = await fetchReferencedFiles(octokit, owner, repo, dependencies, baseBranch);
+    const referencedFiles = await fetchReferencedFiles(
+      octokit,
+      owner,
+      repo,
+      dependencies,
+      baseBranch
+    );
 
     analysisDetails.push({
       filename,
@@ -101,18 +124,10 @@ export async function analyzePullRequest(
       referencedFiles,
     });
   }
-
   return analysisDetails;
 }
 
-export async function analyzeConflicts(
-  files: {
-    filename: string;
-    baseContent: string;
-    headContent: string;
-    referencedFiles: { path: string; content: string }[];
-  }[]
-): Promise<string> {
+export async function analyzeConflicts(files: PRDiffFile[]): Promise<string> {
   const prompt = `
 You are an expert semantic code conflict detector. Analyze the following files for potential conflicts.
 
@@ -125,8 +140,8 @@ Respond in the EXACT JSON format:
 
 Files to analyze:
 ${files
-    .map(
-      (file) => `File: ${file.filename}
+  .map(
+    (file) => `File: ${file.filename}
 Base Branch Content:
 ${file.baseContent}
 
@@ -135,15 +150,15 @@ ${file.headContent}
 
 Referenced Files:
 ${file.referencedFiles
-    .map(
-      (ref) => `Path: ${ref.path}
+  .map(
+    (ref) => `Path: ${ref.path}
 Content:
 ${ref.content}`
-    )
-    .join('\n')}
+  )
+  .join('\n')}
 `
-    )
-    .join('\n\n')}
+  )
+  .join('\n\n')}
   `;
 
   try {
@@ -160,9 +175,10 @@ ${ref.content}`
     );
 
     // Parse the response
-    const responseData = typeof response.data.response === 'string' 
-      ? JSON.parse(response.data.response) 
-      : response.data.response;
+    const responseData =
+      typeof response.data.response === 'string'
+        ? JSON.parse(response.data.response)
+        : response.data.response;
 
     // Return conflict type and explanation if conflict exists, otherwise return no conflicts message
     return responseData.label === 'conflict'
@@ -170,7 +186,6 @@ ${ref.content}`
 
 **${responseData.conflict_type}:** ${responseData.explanation}`
       : '### Semantic Conflict Analysis\n\nNo semantic conflicts detected.';
-
   } catch (error) {
     console.error('Error analyzing conflicts:', error);
     return '### Semantic Conflict Analysis\n\nError analyzing conflicts during merge review.';
