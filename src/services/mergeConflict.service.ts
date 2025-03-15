@@ -1,4 +1,3 @@
-import { Octokit } from 'octokit';
 import { MergeResolution } from '../entities/mergeResolution.entity.ts';
 import { AppDataSource } from '../server/server.ts';
 import { logger } from '../utils/logger.ts';
@@ -40,6 +39,27 @@ export class MergeConflictService {
     }
   }
 
+  public static async getResolutionByPRAndFilename(
+    repoId: string,
+    pullRequestNumber: number,
+    filename: string
+  ): Promise<MergeResolution | null> {
+    try {
+      return this.mergeResolutionRepository.findOne({
+        where: {
+          repo: { id: repoId },
+          pullRequestNumber,
+          filename,
+        },
+        relations: ['repo'],
+      });
+    } catch (error) {
+      throw new Error(
+        `Error getting merge resolution for PR #${pullRequestNumber} and file ${filename}: ${error}`
+      );
+    }
+  }
+
   public static async getResolutionsByPullRequest(
     repoId: string,
     pullRequestNumber: number
@@ -73,50 +93,59 @@ export class MergeConflictService {
     }
   }
 
-  public static async applyResolution(
-    id: number,
-    token: string
-  ): Promise<MergeResolution> {
+  public static async confirmResolutionByPRAndFilename(
+    repoId: string,
+    pullRequestNumber: number,
+    filename: string
+  ): Promise<MergeResolution | null> {
     try {
-      const resolution = await this.getResolutionById(id);
+      const resolution = await this.getResolutionByPRAndFilename(
+        repoId,
+        pullRequestNumber,
+        filename
+      );
+
       if (!resolution) {
-        throw new Error(`Resolution with ID ${id} not found`);
+        logger.error(
+          `Resolution not found for PR #${pullRequestNumber} and file ${filename}`
+        );
+        return null;
       }
 
-      if (!resolution.confirmed) {
-        throw new Error(`Resolution must be confirmed before applying`);
-      }
-
-      if (!resolution.repo) {
-        throw new Error(`Resolution has no associated repository`);
-      }
-
-      const octokit = new Octokit({ auth: token });
-
-      const { data: fileData } = await octokit.rest.repos.getContent({
-        owner: resolution.repo.owner.login,
-        repo: resolution.repo.full_name,
-        path: resolution.filename,
-        ref: resolution.oursBranch || undefined,
-      });
-
-      const { data: commitData } =
-        await octokit.rest.repos.createOrUpdateFileContents({
-          owner: resolution.repo.owner.login,
-          repo: resolution.repo.full_name,
-          path: resolution.filename,
-          message: `Resolve merge conflict for ${resolution.filename}`,
-          content: Buffer.from(resolution.resolvedCode).toString('base64'),
-          sha: (fileData as any).sha,
-          branch: resolution.oursBranch || undefined,
-        });
-
-      resolution.applied = true;
-      resolution.appliedCommitSha = commitData.commit.sha;
-
+      resolution.confirmed = true;
       return this.mergeResolutionRepository.save(resolution);
     } catch (error) {
-      throw new Error(`Error applying merge resolution: ${error}`);
+      logger.error(`Error confirming resolution: ${error}`);
+      return null;
+    }
+  }
+
+  public static async markResolutionAsApplied(
+    repoId: string,
+    pullRequestNumber: number,
+    filename: string,
+    commitSha: string
+  ): Promise<MergeResolution | null> {
+    try {
+      const resolution = await this.getResolutionByPRAndFilename(
+        repoId,
+        pullRequestNumber,
+        filename
+      );
+
+      if (!resolution) {
+        logger.error(
+          `Resolution not found for PR #${pullRequestNumber} and file ${filename}`
+        );
+        return null;
+      }
+
+      resolution.applied = true;
+      resolution.appliedCommitSha = commitSha;
+      return this.mergeResolutionRepository.save(resolution);
+    } catch (error) {
+      logger.error(`Error marking resolution as applied: ${error}`);
+      return null;
     }
   }
 
@@ -126,16 +155,15 @@ export class MergeConflictService {
     resolutions: ResolutionData[]
   ): Promise<void> {
     try {
-      // Process each resolution
       for (const resolution of resolutions) {
-        // Create a new merge resolution entity
         const mergeResolution = new MergeResolution();
-        mergeResolution.repo = { id: repoId } as any; // Set reference to repo
+        mergeResolution.repo = { id: repoId } as any;
         mergeResolution.pullRequestNumber = pullNumber;
         mergeResolution.filename = resolution.filename;
         mergeResolution.resolvedCode = resolution.resolvedCode;
+        mergeResolution.confirmed = false;
+        mergeResolution.applied = false;
 
-        // Store the full content of each version
         if (resolution.baseContent) {
           mergeResolution.baseContent = resolution.baseContent;
         }
@@ -148,7 +176,6 @@ export class MergeConflictService {
           mergeResolution.theirsContent = resolution.theirsContent;
         }
 
-        // Store branch names if available
         if (resolution.oursBranch) {
           mergeResolution.oursBranch = resolution.oursBranch;
         }
@@ -157,11 +184,7 @@ export class MergeConflictService {
           mergeResolution.theirsBranch = resolution.theirsBranch;
         }
 
-        // Save to database
         await this.mergeResolutionRepository.save(mergeResolution);
-        logger.info(
-          `Saved resolution for ${resolution.filename} in PR #${pullNumber}`
-        );
       }
     } catch (error) {
       logger.error(`Failed to store merge conflict resolutions: ${error}`);
