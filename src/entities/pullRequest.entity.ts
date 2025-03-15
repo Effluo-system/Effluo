@@ -49,4 +49,7 @@ export class PullRequest {
     cascade: true,
   })
   reviews!: Relation<Review[]>;
+
+  @Column({ type: 'float', nullable: true })
+  reviewDifficulty!: number;
 }

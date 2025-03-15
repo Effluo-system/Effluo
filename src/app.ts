@@ -10,8 +10,6 @@ import { analyzeReviewersCron } from './functions/analyse-reviewers/analyseRevie
 import { app } from './server/server.ts';
 import authRouter from './routes/auth.routes.ts';
 import consoleRouter from './routes/console.routes.ts';
-import { logger } from './utils/logger.ts';
-import { createWorkflowFileFromTemplate } from './functions/analyse-reviewers/pipelines/createAssignReviewerPipeline.ts';
 
 const { data } = await octokitApp.octokit.request('/app');
 octokitApp.octokit.log.debug(`Authenticated as '${data.name}'`);

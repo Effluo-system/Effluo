@@ -1,6 +1,3 @@
-import * as fs from 'fs';
-import { app } from '../../../config/appConfig.ts';
-import { OctokitOutgoing } from '../../../config/OctokitOutgoing.ts';
 import { logger } from '../../../utils/logger.ts';
 import { Octokit } from '@octokit/rest';
 import { autoAssignReviewerWorkflow } from './Templates/autoAssignReviewer.ts';
@@ -32,7 +29,7 @@ export async function createWorkflowFileFromTemplate(
       content: workflowYaml,
     } as CommittableFile;
   } catch (error) {
-    console.error('Error creating workflow file template:', error);
+    logger.error('Error creating workflow file template:', error);
     return undefined;
   }
 }
@@ -98,8 +95,8 @@ export const pushWorkflowFilesToGithub = async (
       sha: newCommitSHA,
       ref: `heads/${branch}`,
     });
-    console.info('Workflows pushed successfully');
+    logger.info('Workflows pushed successfully');
   } catch (error) {
-    console.error(error);
+    logger.error(error);
   }
 };
