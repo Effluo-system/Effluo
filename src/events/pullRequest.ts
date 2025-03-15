@@ -11,6 +11,7 @@ import {
   analyzeConflicts,
 } from '../functions/semantic-conflict-detection/semanticConflictDetection.ts';
 import { calculateReviewDifficultyOfPR } from '../functions/workload-calculation/workloadCalculation.ts';
+import { PullRequest } from '../entities/pullRequest.entity.ts';
 
 const messageForNewPRs = fs.readFileSync('./src/messages/message.md', 'utf8');
 const messageForNewLabel = fs.readFileSync(
@@ -94,6 +95,9 @@ app.webhooks.on('pull_request.reopened', async ({ octokit, payload }) => {
         payload,
         reviewDifficulty
       );
+    } else {
+      pr.reviewDifficulty = reviewDifficulty;
+      await PullRequestService.updatePullRequest(pr);
     }
 
     // Post conflict analysis as a comment
@@ -134,7 +138,20 @@ app.webhooks.on('pull_request.labeled', async ({ octokit, payload }) => {
       );
       if (!pr) {
         logger.info(`Pull request not found. Creating new pull request ...`);
-        pr = await PullRequestService.initiatePullRequestCreationFlow(payload);
+        const files = await analyzePullRequest(
+          octokit,
+          payload.repository.owner.login,
+          payload.repository.name,
+          payload.pull_request.number,
+          payload.pull_request.base.ref,
+          payload.pull_request.head.ref
+        );
+
+        const reviewDifficulty = await calculateReviewDifficultyOfPR(files);
+        pr = await PullRequestService.initiatePullRequestCreationFlow(
+          payload,
+          reviewDifficulty
+        );
       }
       pr.labels = payload.pull_request.labels.map((labels) => labels.name);
       await PullRequestService.updatePullRequest(pr);

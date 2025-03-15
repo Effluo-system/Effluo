@@ -96,6 +96,7 @@ export class PullRequestService {
           url: payload?.repository?.html_url,
           owner: owner,
           user_review_summary: null,
+          issues: null,
         });
         logger.info('Repo created successfully');
       }
