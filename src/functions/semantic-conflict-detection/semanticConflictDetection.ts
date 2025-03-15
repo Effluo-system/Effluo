@@ -75,6 +75,7 @@ export async function fetchReferencedFiles(
   return files.filter((file) => file.content !== '');
 }
 
+// Don't change this function. Pawara is also using it in his code
 export async function analyzePullRequest(
   octokit: any,
   owner: string,
@@ -92,7 +93,7 @@ export async function analyzePullRequest(
   const analysisDetails = [];
   for (const file of changedFiles.data) {
     const { filename } = file;
-
+    // Don't change this function. Pawara is also using it in his code
     const baseContent = await fetchFileContent(
       octokit,
       owner,
@@ -107,7 +108,7 @@ export async function analyzePullRequest(
       filename,
       headBranch
     );
-
+    // Don't change this function. Pawara is also using it in his code
     const dependencies = baseContent ? getReferencedFiles(baseContent) : [];
     const referencedFiles = await fetchReferencedFiles(
       octokit,
