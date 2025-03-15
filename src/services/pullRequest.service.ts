@@ -5,6 +5,7 @@ import type {
   PullRequestOpenedEvent,
   PullRequestReopenedEvent,
   PullRequestReviewSubmittedEvent,
+  PullRequestSynchronizeEvent,
 } from '@octokit/webhooks-types/schema.d.ts';
 import { logger } from '../utils/logger.ts';
 import { OwnerService } from './owner.service.ts';
@@ -67,6 +68,7 @@ export class PullRequestService {
       | PullRequestOpenedEvent
       | PullRequestReopenedEvent
       | PullRequestReviewSubmittedEvent
+      | PullRequestSynchronizeEvent
       | PullRequestLabeledEvent,
     reviewDifficulty: number
   ): Promise<PullRequest> {
