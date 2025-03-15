@@ -12,6 +12,7 @@ import {
 } from '../functions/semantic-conflict-detection/semanticConflictDetection.ts';
 import { calculateReviewDifficultyOfPR } from '../functions/workload-calculation/workloadCalculation.ts';
 import { PullRequest } from '../entities/pullRequest.entity.ts';
+import { PRReviewRequestService } from '../services/prReviewRequest.service.ts';
 
 const messageForNewPRs = fs.readFileSync('./src/messages/message.md', 'utf8');
 const messageForNewLabel = fs.readFileSync(
@@ -156,6 +157,26 @@ app.webhooks.on('pull_request.labeled', async ({ octokit, payload }) => {
       pr.labels = payload.pull_request.labels.map((labels) => labels.name);
       await PullRequestService.updatePullRequest(pr);
       logger.info(`Pull request updated successfully`);
+    }
+  } catch (error) {
+    const customError = error as CustomError;
+    if (customError.response) {
+      logger.error(
+        `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
+      );
+    } else {
+      logger.error(error);
+    }
+  }
+});
+
+app.webhooks.on('pull_request.closed', async ({ octokit, payload }) => {
+  try {
+    const requests = await PRReviewRequestService.findByPRId(
+      payload?.pull_request?.id?.toString()
+    );
+    if (requests) {
+      await PRReviewRequestService.deleteRequest(requests);
     }
   } catch (error) {
     const customError = error as CustomError;

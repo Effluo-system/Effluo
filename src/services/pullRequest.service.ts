@@ -4,14 +4,19 @@ import type {
   PullRequestLabeledEvent,
   PullRequestOpenedEvent,
   PullRequestReopenedEvent,
+  PullRequestReviewRequestedEvent,
+  PullRequestReviewRequestRemovedEvent,
   PullRequestReviewSubmittedEvent,
   PullRequestSynchronizeEvent,
+  User,
 } from '@octokit/webhooks-types/schema.d.ts';
 import { logger } from '../utils/logger.ts';
 import { OwnerService } from './owner.service.ts';
 import { RepoService } from './repo.service.ts';
 import { Octokit } from 'octokit';
 import { In } from 'typeorm';
+import { PRReviewRequest } from '../entities/prReviewRequest.entity.ts';
+import { PRReviewRequestService } from './prReviewRequest.service.ts';
 export class PullRequestService {
   private static pullRequestRepository =
     AppDataSource.getRepository(PullRequest);
@@ -69,7 +74,9 @@ export class PullRequestService {
       | PullRequestReopenedEvent
       | PullRequestReviewSubmittedEvent
       | PullRequestSynchronizeEvent
-      | PullRequestLabeledEvent,
+      | PullRequestLabeledEvent
+      | PullRequestReviewRequestedEvent
+      | PullRequestReviewRequestRemovedEvent,
     reviewDifficulty: number
   ): Promise<PullRequest> {
     try {
@@ -102,6 +109,7 @@ export class PullRequestService {
         });
         logger.info('Repo created successfully');
       }
+
       const pr = await PullRequestService.createPullRequest({
         id: payload?.pull_request?.id.toString(),
         title: payload?.pull_request?.title,
@@ -122,7 +130,18 @@ export class PullRequestService {
         reviews: [],
         labels: payload?.pull_request?.labels?.map((label) => label.name),
         reviewDifficulty: reviewDifficulty,
+        review_requests: [],
       });
+      if (payload.pull_request.assignees.length > 0) {
+        await PRReviewRequestService.createPRReviewRequest({
+          assignees: payload?.pull_request?.requested_reviewers
+            .filter((person): person is User => 'login' in person) // Type guard to ensure `login` exists
+            .map((person) => person.login),
+          labels: payload?.pull_request?.labels?.map((label) => label.name),
+          pr: pr,
+          weight: reviewDifficulty,
+        });
+      }
       logger.info('Pull request created successfully');
       return pr;
     } catch (error) {
