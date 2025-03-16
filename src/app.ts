@@ -5,6 +5,7 @@ import './events/onError.ts';
 import './events/pullRequest.ts';
 import './events/push.ts';
 import './events/reviewPR.ts';
+import { analyzeReviewersCron } from './functions/analyse-reviewers/analyseReviewers.ts';
 import authRouter from './routes/auth.routes.ts';
 import consoleRouter from './routes/console.routes.ts';
 import { app, startServer } from './server/server.ts';
@@ -20,4 +21,4 @@ app.get('/health', (req, res) => {
 app.use(authRouter);
 app.use(consoleRouter);
 
-// analyzeReviewersCron();
+analyzeReviewersCron();
