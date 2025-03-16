@@ -1,14 +1,15 @@
 import {
-  Entity,
   Column,
+  Entity,
   ManyToOne,
+  OneToMany,
   OneToOne,
   Relation,
-  OneToMany,
 } from 'typeorm';
+import { Issue } from './issue.entity.ts';
+import { MergeResolution } from './mergeResolution.entity.ts';
 import { Owner } from './owner.entity.ts';
 import { UserReviewSummary } from './userReviewSummary.entity.ts';
-import { Issue } from './issue.entity.ts';
 
 @Entity()
 export class Repo {
@@ -36,4 +37,7 @@ export class Repo {
     cascade: false,
   })
   issues!: Relation<Issue[]> | null;
+
+  @OneToMany(() => MergeResolution, (mergeResolution) => mergeResolution.repo)
+  mergeResolutions?: Relation<MergeResolution[]>;
 }

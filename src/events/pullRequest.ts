@@ -1,17 +1,13 @@
-import { app } from '../config/appConfig.ts';
-import { PullRequestService } from '../services/pullRequest.service.ts';
-import { CustomError } from '../types/common.d';
 import fs from 'fs';
-import { logger } from '../utils/logger.ts';
-import { analyzeReviewers } from '../functions/analyse-reviewers/analyseReviewers.ts';
-import { RepoService } from '../services/repo.service.ts';
-import { OwnerService } from '../services/owner.service.ts';
+import { app } from '../config/appConfig.ts';
 import {
-  analyzePullRequest,
   analyzeConflicts,
+  analyzePullRequest,
 } from '../functions/semantic-conflict-detection/semanticConflictDetection.ts';
 import { calculateReviewDifficultyOfPR } from '../functions/workload-calculation/workloadCalculation.ts';
-import { PullRequest } from '../entities/pullRequest.entity.ts';
+import { PullRequestService } from '../services/pullRequest.service.ts';
+import { CustomError } from '../types/common.d';
+import { logger } from '../utils/logger.ts';
 
 const messageForNewPRs = fs.readFileSync('./src/messages/message.md', 'utf8');
 const messageForNewLabel = fs.readFileSync(
