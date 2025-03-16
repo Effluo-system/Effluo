@@ -2,7 +2,6 @@ import fs from 'fs';
 import { app } from '../config/appConfig.ts';
 import { PullRequestService } from '../services/pullRequest.service.ts';
 import { CustomError } from '../types/common.d';
-import fs from 'fs';
 import { logger } from '../utils/logger.ts';
 import { analyzePullRequest, analyzePullRequest2, analyzeConflicts } from '../functions/semantic-conflict-detection/semanticConflictDetection.ts';
 import { calculateReviewDifficultyOfPR } from '../functions/workload-calculation/workloadCalculation.ts';
