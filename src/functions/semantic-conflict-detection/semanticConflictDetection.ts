@@ -28,17 +28,13 @@ export async function fetchFileContent(
       ref: branch,
     });
 
-    if (!('content' in response.data) || response.data.type !== 'file') {
+    if (!("content" in response.data) || response.data.type !== "file") {
       return null;
     }
 
-    const fileContent = response.data as GitHubContentResponse;
-    return Buffer.from(fileContent.content, 'base64').toString('utf8');
+    return Buffer.from(response.data.content, "base64").toString("utf8");
   } catch (error) {
-    console.error(
-      `Error fetching content for ${filePath} on branch ${branch}:`,
-      error
-    );
+    console.error(`Skipping ${filePath} on branch ${branch} (File not found).`);
     return null;
   }
 }
@@ -128,67 +124,156 @@ export async function analyzePullRequest(
   return analysisDetails;
 }
 
-export async function analyzeConflicts(files: PRDiffFile[]): Promise<string> {
-  const prompt = `
-You are an expert semantic code conflict detector. Analyze the following files for potential conflicts.
 
-Respond in the EXACT JSON format:
-{
-  "label": "conflict" or "no_conflict",
-  "conflict_type": "structural conflicts" | "logic and behavior conflicts" | "integration conflicts" | "no conflicts",
-  "explanation": "Detailed description of the conflict or why no conflict exists"
+export async function analyzePullRequest2(
+  octokit: any,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  baseBranch: string,
+  headBranch: string
+): Promise<
+  {
+    filename: string;
+    baseVersionContent: string;
+    mainBranchContent: string;
+    prBranchContent: string;
+  }[]
+> {
+  const changedFiles = await octokit.rest.pulls.listFiles({
+    owner,
+    repo,
+    pull_number: prNumber,
+  });
+
+  const analysisDetails = [];
+  for (const file of changedFiles.data) {
+    const { filename, status } = file;
+
+    const baseVersionContent = await fetchFileContent(octokit, owner, repo, filename, baseBranch);
+    const mainBranchContent = await fetchFileContent(octokit, owner, repo, filename, headBranch);
+    const prBranchContent = await fetchFileContent(octokit, owner, repo, filename, headBranch);
+
+    if (status === "added" || status === "removed") {
+      console.log(`Skipping ${filename} (${status}) - Not modified in both branches.`);
+      continue;
+    }
+
+    if (!baseVersionContent || !prBranchContent || !mainBranchContent) {
+      console.log(`Skipping ${filename} - File missing in one of the branches.`);
+      continue;
+    }
+
+    analysisDetails.push({
+      filename,
+      baseVersionContent,
+      mainBranchContent,
+      prBranchContent,
+    });
+  }
+
+  return analysisDetails;
 }
 
-Files to analyze:
-${files
-  .map(
-    (file) => `File: ${file.filename}
-Base Branch Content:
-${file.baseContent}
+/**
+ * Fetches the merge base commit (common ancestor) between main and feature branches.
+ */
+async function getMergeBase(octokit: any, owner: string, repo: string, mainBranch: string, featureBranch: string): Promise<string> {
+    try {
+        const response = await octokit.rest.repos.compareCommits({
+            owner,
+            repo,
+            base: mainBranch,
+            head: featureBranch,
+        });
 
-Head Branch Content:
-${file.headContent}
+        return response.data.merge_base_commit.sha; // Return the common ancestor commit SHA
+    } catch (error) {
+        console.error(`Error fetching merge base for ${mainBranch} and ${featureBranch}:`, error);
+        throw error;
+    }
+}
 
-Referenced Files:
-${file.referencedFiles
+
+
+export async function analyzeConflicts(
+  files: {
+    filename: string;
+    baseVersionContent: string;
+    mainBranchContent: string;
+    prBranchContent: string;
+  }[]
+): Promise<string> {
+  if (files.length === 0) {
+    console.log("No modified files found for conflict analysis.");
+    return "### Semantic Conflict Analysis\n\nNo modified files found for conflict analysis.";
+  }
+
+  const prompt = files
   .map(
-    (ref) => `Path: ${ref.path}
-Content:
-${ref.content}`
-  )
-  .join('\n')}
+    (item) => `
+Analyze the following changes for semantic merge conflicts.
+
+Base Branch (Common Ancestor):
+${item.baseVersionContent}
+
+Feature Branch (Pull Request Code):
+${item.prBranchContent}
+
+Target Branch (Updated Main Branch):
+${item.mainBranchContent}
+
+Return a JSON object with:
+{
+"conflict": "yes" or "no",
+"explanation": "brief reason with relevant code snippets"
+}
+
+Do not format the response with triple backticks (\` \`\`\` \`) or add \`json\` tags.
 `
   )
-  .join('\n\n')}
-  `;
+  .join("\n\n");
+
+  console.log("Generated Prompt:", prompt);
 
   try {
-    // Send the request to the Ollama API
+    // Send request to the AI API
     const response = await axios.post(
-      'http://localhost:11434/api/generate',
+      "http://localhost:11434/api/generate",
       {
-        model: 'l1b', // Your fine-tuned model name
-        prompt: prompt,
-        format: 'json',
+        model: "qwen", 
+        prompt: prompt, 
+        format: "json",
         stream: false,
+        keep_alive: -1,
       },
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: { "Content-Type": "application/json" } }
     );
 
-    // Parse the response
-    const responseData =
-      typeof response.data.response === 'string'
-        ? JSON.parse(response.data.response)
-        : response.data.response;
+    console.log("Raw AI Response:", response.data);
 
-    // Return conflict type and explanation if conflict exists, otherwise return no conflicts message
-    return responseData.label === 'conflict'
-      ? `### Semantic Conflict Analysis
+    if (!response.data || !response.data.response) {
+      console.error("AI API returned an empty response.");
+      return "### Semantic Conflict Analysis\n\nError: AI API returned an empty response.";
+    }
 
-**${responseData.conflict_type}:** ${responseData.explanation}`
-      : '### Semantic Conflict Analysis\n\nNo semantic conflicts detected.';
+    let responseData;
+    try {
+      responseData =
+        typeof response.data.response === "string"
+          ? JSON.parse(response.data.response)
+          : response.data.response;
+    } catch (jsonError) {
+      console.error("JSON parsing error:", jsonError);
+      console.error("Raw AI response (before parsing error):", response.data.response);
+      return "### Semantic Conflict Analysis\n\nError: AI response was not valid JSON.";
+    }
+
+    return responseData.conflict === "yes"
+      ? `### Semantic Conflict Analysis\n**Conflict Detected:** ${responseData.explanation}`
+      : "### Semantic Conflict Analysis\n\nNo semantic conflicts detected.";
   } catch (error) {
-    console.error('Error analyzing conflicts:', error);
-    return '### Semantic Conflict Analysis\n\nError analyzing conflicts during merge review.';
+    console.error("Error analyzing conflicts:", error);
+    return "### Semantic Conflict Analysis\n\nError analyzing conflicts during merge review.";
   }
 }

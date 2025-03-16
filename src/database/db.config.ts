@@ -7,6 +7,7 @@ import { Owner } from '../entities/owner.entity.ts';
 import { UserReviewSummary } from '../entities/userReviewSummary.entity.ts';
 import createIssueTableMigration from './migrations/create-issue-table.migration.ts';
 import { Issue } from '../entities/issue.entity.ts';
+import { PrFeedback } from '../entities/prFeedback.entity.ts';
 
 dotenv.config();
 
@@ -20,7 +21,7 @@ const dbConfig: DataSourceOptions = {
   synchronize: true,
   migrations: [createIssueTableMigration],
   logging: false,
-  entities: [PullRequest, Review, Repo, Owner, UserReviewSummary, Issue],
+  entities: [PullRequest, Review, Repo, Owner, UserReviewSummary, Issue, PrFeedback],
 };
 
 export default dbConfig;
