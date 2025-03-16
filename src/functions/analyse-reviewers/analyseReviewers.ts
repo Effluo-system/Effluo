@@ -10,7 +10,10 @@ import { UserReviewSummaryService } from '../../services/userReviewSummary.servi
 import { logger } from '../../utils/logger.ts';
 import { RepoService } from '../../services/repo.service.ts';
 import { Octokit } from '@octokit/rest';
-import { createOrUpdateWorkflowFile } from './pipelines/createAssignReviewerPipeline.ts';
+import {
+  createWorkflowFileFromTemplate,
+  pushWorkflowFilesToGithub,
+} from './pipelines/createAssignReviewerPipeline.ts';
 
 export const analyzeReviewers = async () => {
   const reviews = await ReviewService.getReviewsMadeInTheCurrentWeek();
@@ -98,7 +101,7 @@ function findMostWorkedInCategory(
   );
 }
 
-const repos: RepoData = {
+const repos: UserReviewSummary = {
   '213231': {
     David: { security: 2 },
     Fiona: { frontend: 6, security: 1, backend: 4 },
@@ -118,16 +121,15 @@ const repos: RepoData = {
 
 const fetchSummaryForEachRepo = async (newSummary: FrequencySummaryResult) => {
   logger.info('Fetching previous summary for each repo ...');
-
   Object.keys(newSummary).forEach(async (repoId) => {
     const previousSummary = await UserReviewSummaryService.getSummaryByRepoId(
       repoId
     );
+    const repo = await RepoService.getRepoById(repoId);
+    if (!repo) {
+      throw new Error(`Repo with id ${repoId} not found`);
+    }
     if (!previousSummary) {
-      const repo = await RepoService.getRepoById(repoId);
-      if (!repo) {
-        throw new Error(`Repo with id ${repoId} not found`);
-      }
       await UserReviewSummaryService.createSummary({
         repo: repo,
         review_summary: newSummary[repoId],
@@ -136,28 +138,45 @@ const fetchSummaryForEachRepo = async (newSummary: FrequencySummaryResult) => {
       logger.info(`Summary for repo ${repoId} has been created`);
       logger.info('Initiating pipeline creation...');
       const summary = newSummary[repoId];
-      Object.keys(summary).forEach(async (category) => {
-        const reviewers = [summary[category]];
-        await createOrUpdateWorkflowFile(
-          repo.owner.login,
-          repo.full_name.split('/')[1],
-          reviewers,
-          [category]
-        );
-      });
+      // Object.keys(summary).forEach(async (category) => {
+      //   const reviewers = [summary[category]];
+      //   await createWorkflowFileFromTemplate(
+      //     repo.owner.login,
+      //     repo.full_name.split('/')[1],
+      //     reviewers,
+      //     [category]
+      //   );
+      // });
+      await pushWorkflowFilesToGithub(
+        repo.owner.login,
+        repo.full_name.split('/')[1],
+        'main',
+        summary
+      );
+
       logger.info('Pipeline created');
       return;
-    }
-    if (areSummariesEqual(previousSummary.review_summary, newSummary[repoId])) {
+    } else if (
+      areSummariesEqual(previousSummary.review_summary, newSummary[repoId])
+    ) {
       logger.info(
         `Summary for repo ${repoId} has not changed. Skipping pipeline creation`
       );
       return;
+    } else {
+      previousSummary.review_summary = newSummary[repoId];
+      await UserReviewSummaryService.updateSummary(previousSummary);
+      logger.info(`Summary for repo ${repoId} has been updated`);
+      await pushWorkflowFilesToGithub(
+        repo.owner.login,
+        repo.full_name.split('/')[1],
+        'main',
+        newSummary[repoId]
+      );
+
+      logger.info('Pipeline created');
+      return;
     }
-    previousSummary.review_summary = newSummary[repoId];
-    await UserReviewSummaryService.updateSummary(previousSummary);
-    logger.info(`Summary for repo ${repoId} has been updated`);
-    logger.info('Initiating pipeline creation...');
   });
 };
 

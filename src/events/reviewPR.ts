@@ -1,5 +1,7 @@
 import { app } from '../config/appConfig.ts';
 import { analyzeReviewers } from '../functions/analyse-reviewers/analyseReviewers.ts';
+import { analyzePullRequest } from '../functions/semantic-conflict-detection/semanticConflictDetection.ts';
+import { calculateReviewDifficultyOfPR } from '../functions/workload-calculation/workloadCalculation.ts';
 import { PullRequestService } from '../services/pullRequest.service.ts';
 import { ReviewService } from '../services/review.service.ts';
 import type { CustomError } from '../types/common.ts';
@@ -18,7 +20,19 @@ app.webhooks.on(
 
       if (!pr) {
         logger.info('Pull request not found');
-        pr = await PullRequestService.initiatePullRequestCreationFlow(payload);
+        const files = await analyzePullRequest(
+          octokit,
+          payload.repository.owner.login,
+          payload.repository.name,
+          payload.pull_request.number,
+          payload.pull_request.base.ref,
+          payload.pull_request.head.ref
+        );
+        const reviewDifficulty = await calculateReviewDifficultyOfPR(files);
+        pr = await PullRequestService.initiatePullRequestCreationFlow(
+          payload,
+          reviewDifficulty
+        );
       }
 
       await ReviewService.createReview({

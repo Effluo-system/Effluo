@@ -1,30 +1,45 @@
-import * as fs from 'fs';
-import { app } from '../../../config/appConfig.ts';
-import { OctokitOutgoing } from '../../../config/OctokitOutgoing.ts';
 import { logger } from '../../../utils/logger.ts';
 import { Octokit } from '@octokit/rest';
 import { autoAssignReviewerWorkflow } from './Templates/autoAssignReviewer.ts';
 import { jwtToken } from '../../../utils/generateGithubJWT.ts';
+import {
+  CommittableFile,
+  FrequencySummaryResultForEachRepo,
+} from '../../../types/analyze-reviewers';
 
-// Initialize Octokit with your personal access token
-
-export async function createOrUpdateWorkflowFile(
-  owner: string,
-  repo: string,
+export async function createWorkflowFileFromTemplate(
   reviewers: string[],
   labels: string[]
-) {
-  const filePath = `.github/workflows/auto-assign-reviewer-${labels
-    .map((label) => label.replace(/ /g, '-'))
-    .join('-')}-workflow.yml`; // Path to the workflow file
-  const branch = 'main'; // Branch name to push the file to
+): Promise<CommittableFile | undefined> {
+  try {
+    const filePath = `.github/workflows/auto-assign-reviewer-${labels
+      .map((label) => label.replace(/ /g, '-'))
+      .join('-')}-workflow.yml`; // Path to the workflow file
 
-  // Define the content of the workflow file
-  const workflowYaml = autoAssignReviewerWorkflow({
-    reviewers: reviewers,
-    label: labels,
-  });
+    // Define the content of the workflow file
+    const workflowYaml = autoAssignReviewerWorkflow({
+      reviewers: reviewers,
+      label: labels,
+    });
 
+    return {
+      path: filePath,
+      mode: '100644',
+      type: 'commit',
+      content: workflowYaml,
+    } as CommittableFile;
+  } catch (error) {
+    logger.error('Error creating workflow file template:', error);
+    return undefined;
+  }
+}
+
+export const pushWorkflowFilesToGithub = async (
+  owner: string,
+  repo: string,
+  branch: string,
+  summary: FrequencySummaryResultForEachRepo
+) => {
   try {
     const octokit = new Octokit({
       auth: `Bearer ${jwtToken}`,
@@ -46,20 +61,42 @@ export async function createOrUpdateWorkflowFile(
     logger.info('Ref data:', refData);
     const sha = refData.object.sha;
 
-    // Create or update the workflow file
-    const { data: fileData } =
-      await octokitWithToken.rest.repos.createOrUpdateFileContents({
-        owner,
-        repo,
-        path: filePath,
-        message: 'Add GitHub Actions workflow file',
-        content: Buffer.from(workflowYaml).toString('base64'), // Base64 encode the file content
-        branch: branch,
-        sha: sha, // Set SHA if updating the file
-      });
+    let committableFiles: CommittableFile[] = [];
+    Object.keys(summary).forEach(async (category) => {
+      const reviewers = [summary[category]];
+      const file: CommittableFile | undefined =
+        await createWorkflowFileFromTemplate(reviewers, [category]);
+      committableFiles.push(file!);
+    });
+    const {
+      data: { sha: currentTreeSHA },
+    } = await octokitWithToken.git.createTree({
+      owner: owner,
+      repo: repo,
+      tree: committableFiles,
+      base_tree: sha,
+      message: 'Create new workflows for auto reviewer assignment 1',
+      parents: [sha],
+    });
 
-    // console.log('Workflow YAML file created/updated:', fileData.content);
+    const {
+      data: { sha: newCommitSHA },
+    } = await octokitWithToken.git.createCommit({
+      owner: owner,
+      repo: repo,
+      tree: currentTreeSHA,
+      message: `Create new workflows for auto reviewer assignment 2`,
+      parents: [sha],
+    });
+
+    await octokitWithToken.git.updateRef({
+      owner: owner,
+      repo: repo,
+      sha: newCommitSHA,
+      ref: `heads/${branch}`,
+    });
+    logger.info('Workflows pushed successfully');
   } catch (error) {
-    console.error('Error creating or updating the workflow file:', error);
+    logger.error(error);
   }
-}
+};

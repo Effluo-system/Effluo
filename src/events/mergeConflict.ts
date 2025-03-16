@@ -1,8 +1,11 @@
 import { app } from '../config/appConfig.ts';
+import { analyzePullRequest } from '../functions/semantic-conflict-detection/semanticConflictDetection.ts';
 import {
   createResolutionComment,
   getResolution,
 } from '../functions/textual-merge-conflict-resolution/textualMergeConflictResolution.ts';
+import { calculateReviewDifficultyOfPR } from '../functions/workload-calculation/workloadCalculation.ts';
+import { PullRequestService } from '../services/pullRequest.service.ts';
 import type { CustomError } from '../types/common.d.ts';
 import { checkForMergeConflicts } from '../utils/checkForMergeConflicts.ts';
 import { logger } from '../utils/logger.ts';
@@ -15,6 +18,39 @@ app.webhooks.on(
       `Received a synchronize event for #${payload.pull_request.number}`
     );
     try {
+      let pr = await PullRequestService.getPullRequestById(
+        payload?.pull_request?.id.toString()
+      );
+      if (!pr) {
+        logger.info(`Pull request not found. Creating new pull request ...`);
+        const files = await analyzePullRequest(
+          octokit,
+          payload.repository.owner.login,
+          payload.repository.name,
+          payload.pull_request.number,
+          payload.pull_request.base.ref,
+          payload.pull_request.head.ref
+        );
+
+        const reviewDifficulty = await calculateReviewDifficultyOfPR(files);
+        pr = await PullRequestService.initiatePullRequestCreationFlow(
+          payload,
+          reviewDifficulty
+        );
+      } else {
+        const files = await analyzePullRequest(
+          octokit,
+          payload.repository.owner.login,
+          payload.repository.name,
+          payload.pull_request.number,
+          payload.pull_request.base.ref,
+          payload.pull_request.head.ref
+        );
+
+        const reviewDifficulty = await calculateReviewDifficultyOfPR(files);
+        pr.reviewDifficulty = reviewDifficulty;
+        await PullRequestService.updatePullRequest(pr);
+      }
       const mergable = await checkForMergeConflicts(
         octokit,
         payload.repository.owner.login,
