@@ -8,6 +8,7 @@ import { calculateReviewDifficultyOfPR } from '../functions/workload-calculation
 import { PullRequest } from '../entities/pullRequest.entity.ts';
 import { AppDataSource } from '../server/server.ts';  
 import { PrFeedback } from '../entities/prFeedback.entity.ts';  
+import { prioritizePullRequest} from '../functions/pr-prioritization/pr-prioritization.ts';
 
 const messageForNewPRs = fs.readFileSync('./src/messages/message.md', 'utf8');
 const messageForNewLabel = fs.readFileSync('./src/messages/messageNewLabel.md', 'utf8');
@@ -253,3 +254,26 @@ app.webhooks.on('pull_request.reopened', async ({ octokit, payload }) => {
 //   }
 // );
 
+app.webhooks.on('pull_request', async ({ octokit, payload }) => {
+  logger.info(
+    `Received a pull request event for #${payload.pull_request.number}`
+  );
+  try {
+    await prioritizePullRequest(
+      octokit as any,
+      payload.repository.owner.login,
+      payload.repository.name,
+      payload.pull_request.number
+    );
+  }
+  catch (error) {
+    const customError = error as CustomError;
+    if (customError.response) {
+      logger.error(
+        `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
+      );
+    } else {
+      logger.error(error);
+    }
+  }
+});
