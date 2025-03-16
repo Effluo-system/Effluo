@@ -7,10 +7,12 @@
     "start": "node dist/app.js",
     "build": "tsc",
     "lint": "standard",
-    "dev": "nodemon --watch src --ext ts --exec \"node --loader ts-node/esm src/app.ts\""
+    "dev": "nodemon --watch src --ext ts --exec \"node --loader ts-node/esm src/app.ts\"",
+    "migration:run": "npx typeorm migration:run -d ./src/database/db.config.ts"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
+    "@types/diff3": "^0.0.2",
     "@types/express": "^5.0.0",
     "@types/node": "^22.9.1",
     "@types/node-schedule": "^2.1.7",
@@ -27,14 +29,18 @@
     "@octokit/webhooks": "^13.4.1",
     "axios": "^1.7.8",
     "cors": "^2.8.5",
+    "diff3": "^0.0.4",
     "dotenv": "^16.0.3",
     "express": "^4.21.1",
     "groq-sdk": "^0.8.0",
+    "js-base64": "^3.7.7",
     "jsonwebtoken": "^9.0.2",
+    "lodash": "^4.17.21",
     "node-schedule": "^2.1.1",
     "octokit": "^3.1.2",
-    "pg": "^8.13.1",
+    "pg": "^8.14.0",
     "reflect-metadata": "^0.2.2",
+    "tsutils": "^3.21.0",
     "typeorm": "^0.3.20",
     "winston": "^3.17.0"
   }
