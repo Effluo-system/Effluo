@@ -339,6 +339,7 @@ async function storeResolution(
         url: `https://github.com/${owner}/${repoName}`,
         owner: ownerEntity,
         user_review_summary: null,
+        issues: null,
       });
     }
 

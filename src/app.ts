@@ -8,7 +8,7 @@ import './events/push.ts';
 import './events/reviewPR.ts';
 import authRouter from './routes/auth.routes.ts';
 import consoleRouter from './routes/console.routes.ts';
-import { startServer } from './server/server.ts';
+import { app, startServer } from './server/server.ts';
 
 const { data } = await octokitApp.octokit.request('/app');
 octokitApp.octokit.log.debug(`Authenticated as '${data.name}'`);
