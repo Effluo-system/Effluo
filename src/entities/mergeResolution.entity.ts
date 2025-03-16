@@ -49,4 +49,7 @@ export class MergeResolution {
 
   @Column({ type: 'varchar', nullable: true })
   appliedCommitSha?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  lastProcessedTimestamp?: string;
 }

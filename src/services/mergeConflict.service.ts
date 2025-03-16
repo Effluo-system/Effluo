@@ -149,6 +149,52 @@ export class MergeConflictService {
     }
   }
 
+  public static async markAllResolutionsAsNotApplied(
+    repoId: string,
+    pullRequestNumber: number
+  ): Promise<number> {
+    try {
+      logger.info(
+        `Marking all resolutions as not applied for PR #${pullRequestNumber}`
+      );
+
+      const resolutions = await this.getResolutionsByPullRequest(
+        repoId,
+        pullRequestNumber
+      );
+
+      const appliedResolutions = resolutions.filter(
+        (resolution) => resolution.applied
+      );
+
+      if (appliedResolutions.length === 0) {
+        logger.info(
+          `No applied resolutions found for PR #${pullRequestNumber}`
+        );
+        return 0;
+      }
+
+      for (const resolution of appliedResolutions) {
+        resolution.applied = false;
+        resolution.appliedCommitSha = undefined;
+        await this.saveMergeResolution(resolution);
+        logger.info(
+          `Marked resolution for ${resolution.filename} as not applied`
+        );
+      }
+
+      logger.info(
+        `Successfully marked ${appliedResolutions.length} resolutions as not applied for PR #${pullRequestNumber}`
+      );
+      return appliedResolutions.length;
+    } catch (error) {
+      logger.error(
+        `Error marking resolutions as not applied for PR #${pullRequestNumber}: ${error}`
+      );
+      throw new Error(`Failed to mark resolutions as not applied: ${error}`);
+    }
+  }
+
   public static async storeResolutionsForPR(
     repoId: string,
     pullNumber: number,
@@ -197,6 +243,64 @@ export class MergeConflictService {
       await this.mergeResolutionRepository.delete(id);
     } catch (error) {
       throw new Error(`Error deleting merge resolution: ${error}`);
+    }
+  }
+
+  public static async getLatestProcessedResolution(
+    repoId: string,
+    pullRequestNumber: number
+  ): Promise<MergeResolution | null> {
+    try {
+      // Find the most recently processed resolution for this PR
+      return this.mergeResolutionRepository.findOne({
+        where: {
+          repo: { id: repoId },
+          pullRequestNumber,
+        },
+        order: {
+          lastProcessedTimestamp: 'DESC',
+        },
+        relations: ['repo'],
+      });
+    } catch (error) {
+      logger.error(`Error getting latest processed resolution: ${error}`);
+      return null;
+    }
+  }
+
+  public static async updateLastProcessedTimestamp(
+    repoId: string,
+    pullRequestNumber: number,
+    timestamp: string
+  ): Promise<boolean> {
+    try {
+      logger.info(
+        `Updating last processed timestamp for PR #${pullRequestNumber} to ${timestamp}`
+      );
+
+      // Update all resolutions for this PR with the new timestamp
+      const resolutions = await this.getResolutionsByPullRequest(
+        repoId,
+        pullRequestNumber
+      );
+
+      if (resolutions.length === 0) {
+        logger.info(`No resolutions found for PR #${pullRequestNumber}`);
+        return false;
+      }
+
+      for (const resolution of resolutions) {
+        resolution.lastProcessedTimestamp = timestamp;
+        await this.saveMergeResolution(resolution);
+      }
+
+      logger.info(
+        `Updated last processed timestamp for ${resolutions.length} resolutions`
+      );
+      return true;
+    } catch (error) {
+      logger.error(`Error updating last processed timestamp: ${error}`);
+      return false;
     }
   }
 }

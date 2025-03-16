@@ -1,6 +1,7 @@
 import { Octokit } from '@octokit/rest';
 import diff3 from 'diff3';
 import { Base64 } from 'js-base64';
+import { MergeResolution } from '../../entities/mergeResolution.entity.ts';
 import { MergeConflictService } from '../../services/mergeConflict.service.ts';
 import { OwnerService } from '../../services/owner.service.ts';
 import { RepoService } from '../../services/repo.service.ts';
@@ -295,22 +296,6 @@ async function getConflictingFiles(
       }
     }
 
-    // for (const file of conflictingFiles) {
-    //   const resolutionEntity =
-    //     await MergeConflictService.getResolutionByPRAndFilename(
-    //       `${owner}/${repo}`,
-    //       pullNumber,
-    //       file
-    //     );
-
-    //   if (resolutionEntity) {
-    //     logger.info(
-    //       `Deleting existing resolution for ${file} in PR #${pullNumber}`
-    //     );
-    //     await MergeConflictService.deleteResolution(resolutionEntity.id);
-    //   }
-    // }
-
     logger.info(`Found ${conflictingFiles.length} files with conflicts`);
     return conflictingFiles;
   } catch (error) {
@@ -568,16 +553,13 @@ function generateGitStyleConflictView(
 
 function generateResolutionDiff(
   originalContent: string,
-  resolvedContent: string,
-  branchName?: string
+  resolvedContent: string
 ): string {
   const originalLines = originalContent.split('\n');
   const resolvedLines = resolvedContent.split('\n');
 
   // Use branch name in label if available
-  const displayLabel = branchName
-    ? `Resolution (from ${branchName})`
-    : 'Resolution';
+  const displayLabel = 'Resolution';
   let unifiedDiff = `--- Original\n+++ ${displayLabel}\n`;
 
   // Generate the diff
@@ -656,12 +638,17 @@ async function storeResolution(
         filename
       );
 
+    const currentTimestamp = new Date().toISOString();
+
     if (existingResolution) {
       // Update the existing resolution
       existingResolution.resolvedCode = resolvedCode;
       existingResolution.baseContent = baseContent;
       existingResolution.oursContent = oursContent;
       existingResolution.theirsContent = theirsContent;
+      existingResolution.confirmed = false;
+      existingResolution.applied = false;
+      existingResolution.lastProcessedTimestamp = currentTimestamp; // Ensure timestamp is updated
 
       if (fileData?.ours?.ref) {
         existingResolution.oursBranch = fileData.ours.ref;
@@ -674,22 +661,28 @@ async function storeResolution(
       await MergeConflictService.saveMergeResolution(existingResolution);
       logger.info(`Updated resolution for ${filename} in PR #${pullNumber}`);
     } else {
-      // Store as new resolution
-      const resolutionToStore = {
-        filename,
-        resolvedCode,
-        baseContent,
-        oursContent,
-        theirsContent,
-        oursBranch: fileData?.ours?.ref,
-        theirsBranch: fileData?.theirs?.ref,
-      };
+      // Store as new resolution with lastProcessedTimestamp
+      const newResolution = new MergeResolution();
+      newResolution.repo = { id: repoEntity.id } as any;
+      newResolution.pullRequestNumber = pullNumber;
+      newResolution.filename = filename;
+      newResolution.resolvedCode = resolvedCode;
+      newResolution.baseContent = baseContent;
+      newResolution.oursContent = oursContent;
+      newResolution.theirsContent = theirsContent;
+      newResolution.confirmed = false;
+      newResolution.applied = false;
+      newResolution.lastProcessedTimestamp = currentTimestamp;
 
-      await MergeConflictService.storeResolutionsForPR(
-        repoEntity.id,
-        pullNumber,
-        [resolutionToStore]
-      );
+      if (fileData?.ours?.ref) {
+        newResolution.oursBranch = fileData.ours.ref;
+      }
+
+      if (fileData?.theirs?.ref) {
+        newResolution.theirsBranch = fileData.theirs.ref;
+      }
+
+      await MergeConflictService.saveMergeResolution(newResolution);
       logger.info(`Stored new resolution for ${filename} in PR #${pullNumber}`);
     }
   } catch (error) {
@@ -727,17 +720,9 @@ export async function createResolutionComment(
     const oursBranchName = fileData?.ours?.ref;
     const theirsBranchName = fileData?.theirs?.ref;
 
-    const oursDiff = generateResolutionDiff(
-      oursContent,
-      resolvedCode,
-      oursBranchName
-    );
+    const oursDiff = generateResolutionDiff(oursContent, resolvedCode);
 
-    const theirsDiff = generateResolutionDiff(
-      theirsContent,
-      resolvedCode,
-      theirsBranchName
-    );
+    const theirsDiff = generateResolutionDiff(theirsContent, resolvedCode);
 
     commentBody += `
 #### Git-style Conflict View
@@ -761,9 +746,9 @@ ${resolvedCode}
 #### Resolution Changes
 
 <details open>
-<summary>Changes from your branch (${
+<summary>Changes from resolution to your branch (${
       oursBranchName || 'YOURS'
-    }) to resolution</summary>
+    })</summary>
 
 \`\`\`diff
 ${oursDiff}
@@ -771,9 +756,9 @@ ${oursDiff}
 </details>
 
 <details open>
-<summary>Changes from target branch (${
+<summary>Changes from resolution to the target branch (${
       theirsBranchName || 'THEIRS'
-    }) to resolution</summary>
+    })</summary>
 
 \`\`\`diff
 ${theirsDiff}
@@ -791,7 +776,12 @@ ${resolvedCode}
   }
 
   commentBody += `
-Note: This is an automated suggestion. Please review the changes carefully before merging. If you are satisfied with the resolution, you can approve the changes by commenting \`\`\`"approve resolution for \`${filename}\`\`\`\`".
+Note: This is an automated suggestion. Please review the changes carefully before merging. If you are satisfied with the resolution, you can approve the changes by commenting 
+\`\`\`
+Apply all resolutions
+\`\`\`
+
+Please note there will be no further confirmation before applying all resolutions.
 `;
 
   // Create the comment in GitHub
@@ -815,97 +805,18 @@ Note: This is an automated suggestion. Please review the changes carefully befor
   );
 }
 
-/**
- * Gets the conflict data for files with merge conflicts,
- * including information about the branch names.
- * This function is extracted to avoid duplicate code.
- */
-export async function getConflictingData(
-  octokit: Octokit,
-  owner: string,
-  repo: string,
-  pullNumber: number
-): Promise<ConflictData[]> {
-  try {
-    // Get PR details
-    const { data: pr } = await octokit.rest.pulls.get({
-      owner,
-      repo,
-      pull_number: pullNumber,
-    });
-
-    const conflictingFilenames = await getConflictingFiles(
-      octokit,
-      owner,
-      repo,
-      pullNumber
-    );
-
-    if (conflictingFilenames.length === 0) {
-      logger.info('No conflicting files found');
-      return [];
-    }
-
-    const conflictData: ConflictData[] = [];
-
-    // Gather conflict data for all files
-    for (const filename of conflictingFilenames) {
-      try {
-        // Get common ancestor commit (merge base)
-        const { data: compareData } = await octokit.rest.repos.compareCommits({
-          owner,
-          repo,
-          base: pr.base.sha,
-          head: pr.head.sha,
-        });
-
-        const mergeBase = compareData.merge_base_commit.sha;
-
-        // Get all three versions of the file
-        const [baseContent, oursContent, theirsContent] = await Promise.all([
-          getFileContent(octokit, owner, repo, filename, mergeBase),
-          getFileContent(octokit, owner, repo, filename, pr.head.sha),
-          getFileContent(octokit, owner, repo, filename, pr.base.sha),
-        ]);
-
-        conflictData.push({
-          filename: filename,
-          base: {
-            content: baseContent,
-            sha: mergeBase,
-            ref: 'merge-base',
-          },
-          ours: {
-            content: oursContent,
-            sha: pr.head.sha,
-            ref: pr.head.ref, // This includes the actual branch name
-          },
-          theirs: {
-            content: theirsContent,
-            sha: pr.base.sha,
-            ref: pr.base.ref, // This includes the actual target branch name
-          },
-        });
-      } catch (error) {
-        logger.error(`Failed to process file ${filename}:`, error);
-        continue; // Skip this file and continue with others
-      }
-    }
-
-    return conflictData;
-  } catch (error) {
-    logger.error('Failed to process conflict files:', error);
-    return [];
-  }
-}
-
 // Commit by command
 export async function checkForCommitResolutionCommands(
   octokit: Octokit,
   owner: string,
   repo: string,
   pullNumber: number
-): Promise<CommitCommand[]> {
+): Promise<{
+  applyAll: boolean;
+  commentId?: number;
+  user?: string;
+  commandTimestamp?: string;
+}> {
   try {
     logger.info(`Checking for commit resolution commands in PR #${pullNumber}`);
 
@@ -914,7 +825,7 @@ export async function checkForCommitResolutionCommands(
       repo,
       issue_number: pullNumber,
       sort: 'created',
-      direction: 'desc',
+      direction: 'desc', // Most recent first
       per_page: 100,
     });
 
@@ -926,24 +837,55 @@ export async function checkForCommitResolutionCommands(
       pull_number: pullNumber,
     });
 
-    const commitCommands: CommitCommand[] = [];
-
-    const commandPatterns = [
-      /apply resolution for [`"]?([^`"]+)[`"]?/i,
-      /commit resolution for [`"]?([^`"]+)[`"]?/i,
-      /accept resolution for [`"]?([^`"]+)[`"]?/i,
-      /approve resolution for [`"]?([^`"]+)[`"]?/i,
-    ];
+    let applyAll = false;
+    let applyAllCommentId: number | undefined;
+    let applyAllUser: string | undefined;
+    let commandTimestamp: string | undefined;
 
     // Get repository entity once
     const repoEntity = await RepoService.getRepoByOwnerAndName(owner, repo);
     if (!repoEntity) {
       logger.error(`Repository ${owner}/${repo} not found in database`);
-      return [];
+      return { applyAll: false };
     }
 
+    // Get the latest processed command timestamp from database
+    // This helps determine which commands are new
+    const latestResolution =
+      await MergeConflictService.getLatestProcessedResolution(
+        repoEntity.id,
+        pullNumber
+      );
+
+    const lastProcessedTimestamp = latestResolution?.lastProcessedTimestamp;
+    logger.info(
+      `Last processed command timestamp: ${lastProcessedTimestamp || 'none'}`
+    );
+
+    // Patterns for generic "apply all" commands
+    const applyAllPatterns = [
+      /apply resolution/i,
+      /commit resolution/i,
+      /accept resolution/i,
+      /approve resolution/i,
+      /apply all resolutions/i,
+      /resolve all conflicts/i,
+    ];
+
+    // Since comments are sorted by created_at desc, we're checking from most recent to oldest
     for (const comment of comments) {
       if (comment.user?.type === 'Bot') continue;
+
+      // Skip comments that were already processed
+      if (
+        lastProcessedTimestamp &&
+        new Date(comment.created_at) <= new Date(lastProcessedTimestamp)
+      ) {
+        logger.info(
+          `Skipping previously processed comment from ${comment.user?.login} at ${comment.created_at}`
+        );
+        continue;
+      }
 
       const canApprove = comment.user?.login === pr.user.login;
 
@@ -960,243 +902,456 @@ export async function checkForCommitResolutionCommands(
         }
       }
 
-      for (const pattern of commandPatterns) {
-        const match = comment.body?.match(pattern);
-
-        if (match && match[1]) {
-          const filename = match[1].trim();
-
-          // Check resolution status in database
-          const resolution =
-            await MergeConflictService.getResolutionByPRAndFilename(
+      // Check if this comment contains a resolution command
+      for (const pattern of applyAllPatterns) {
+        if (comment.body?.match(pattern)) {
+          // Check if there are any unapplied resolutions for this PR
+          const pendingResolutions =
+            await MergeConflictService.getResolutionsByPullRequest(
               repoEntity.id,
-              pullNumber,
-              filename
+              pullNumber
             );
 
-          if (!resolution) {
-            logger.info(
-              `No resolution found for ${filename} in PR #${pullNumber}`
-            );
-            continue;
-          }
+          const unappliedResolutions = pendingResolutions.filter(
+            (resolution) => !resolution.applied
+          );
 
-          // Only process if either:
-          // 1. Not confirmed yet, or
-          // 2. Confirmed but not applied yet
-          if (
-            !resolution.confirmed ||
-            (resolution.confirmed && !resolution.applied)
-          ) {
-            commitCommands.push({
-              filename,
-              comment_id: comment.id,
-              user: comment.user?.login || 'unknown',
-              timestamp: comment.created_at,
-            });
+          if (unappliedResolutions.length > 0) {
+            applyAll = true;
+            applyAllCommentId = comment.id;
+            applyAllUser = comment.user?.login || 'unknown';
+            commandTimestamp = comment.created_at;
 
-            // Automatically mark as confirmed when command is received
-            if (!resolution.confirmed) {
-              await MergeConflictService.confirmResolutionByPRAndFilename(
-                repoEntity.id,
-                pullNumber,
-                filename
-              );
-              logger.info(`Marked resolution for ${filename} as confirmed`);
+            // Mark all pending resolutions as confirmed
+            for (const resolution of unappliedResolutions) {
+              if (!resolution.confirmed) {
+                resolution.confirmed = true;
+                await MergeConflictService.saveMergeResolution(resolution);
+              }
             }
 
             logger.info(
-              `Added commit command for ${filename} from ${comment.user?.login}`
+              `Found new command from ${comment.user?.login} at ${comment.created_at}, will apply ${unappliedResolutions.length} resolutions`
             );
+
+            // We found a valid command in the most recent comment, no need to check older ones
+            break;
           } else {
             logger.info(
-              `Resolution for ${filename} was already applied, skipping`
+              `No unapplied resolutions found for PR #${pullNumber}, nothing to do`
             );
           }
-
-          break;
         }
       }
+
+      // If we found a command in this comment, stop processing older comments
+      if (applyAll) break;
     }
 
-    return commitCommands;
+    return {
+      applyAll,
+      commentId: applyAllCommentId,
+      user: applyAllUser,
+      commandTimestamp,
+    };
   } catch (error) {
     logger.error(`Error checking for commit commands: ${error}`);
-    return [];
+    return { applyAll: false };
   }
 }
 
-export async function commitResolution(
+export async function resolveAllConflicts(
   octokit: Octokit,
   owner: string,
   repo: string,
-  pullNumber: number,
-  filename: string
+  pullNumber: number
 ): Promise<boolean> {
+  let tempBranch: string | null = null;
+
   try {
-    const { data: pr } = await octokit.rest.pulls.get({
-      owner,
-      repo,
-      pull_number: pullNumber,
-    });
-
-    // Check if PR is still in conflict state
-    if (pr.mergeable === true) {
-      logger.info(
-        `PR #${pullNumber} is already mergeable, no need to resolve conflicts`
-      );
-      return true;
-    }
-
     const repoEntity = await RepoService.getRepoByOwnerAndName(owner, repo);
     if (!repoEntity) {
       logger.error(`Repository ${owner}/${repo} not found in database`);
       return false;
     }
 
-    const resolution = await MergeConflictService.getResolutionByPRAndFilename(
+    const { data: pr } = await octokit.rest.pulls.get({
+      owner,
+      repo,
+      pull_number: pullNumber,
+    });
+
+    const resolutions = await MergeConflictService.getResolutionsByPullRequest(
       repoEntity.id,
-      pullNumber,
-      filename
+      pullNumber
     );
 
-    if (!resolution) {
-      logger.error(`No resolution found for ${filename} in PR #${pullNumber}`);
-      return false;
-    }
+    const pendingResolutions = resolutions.filter(
+      (resolution) => resolution.confirmed && !resolution.applied
+    );
 
-    // Parse the stringified content before using it
-    let resolvedContent;
-    try {
-      resolvedContent = JSON.parse(resolution.resolvedCode);
-    } catch (error) {
-      logger.error(`Failed to parse resolvedCode for ${filename}:`, error);
-      // If parsing fails, use the raw content as a fallback
-      resolvedContent = resolution.resolvedCode;
-    }
-
-    const branchName = pr.head.ref;
-    const baseBranchName = pr.base.ref;
-
-    try {
-      logger.info(
-        `Applying resolution for ${filename} in PR #${pullNumber} on branch ${branchName}`
-      );
-
-      // Step 1: Create a temporary branch from the PR head branch
-      const tempBranchName = `resolve-conflict-${pullNumber}-${Date.now()}`;
-
-      // Get the current head commit SHA
-      const { data: refData } = await octokit.rest.git.getRef({
-        owner,
-        repo,
-        ref: `heads/${branchName}`,
-      });
-
-      // Create temp branch
-      await octokit.rest.git.createRef({
-        owner,
-        repo,
-        ref: `refs/heads/${tempBranchName}`,
-        sha: refData.object.sha,
-      });
-
-      // Step 2: Update the file with resolved content on the temp branch
-      let fileSha;
-      try {
-        const { data: fileData } = await octokit.rest.repos.getContent({
-          owner,
-          repo,
-          path: filename,
-          ref: branchName,
-        });
-
-        if (Array.isArray(fileData)) {
-          throw new Error(
-            `Path ${filename} resolves to a directory, not a file`
-          );
-        }
-
-        fileSha = fileData.sha;
-      } catch (error) {
-        // Continue without SHA for new files
-        logger.warn(`Could not get SHA for ${filename}, might be a new file`);
-      }
-
-      // Commit the resolved content to the temp branch
-      const { data: commitData } =
-        await octokit.rest.repos.createOrUpdateFileContents({
-          owner,
-          repo,
-          path: filename,
-          message: `Resolve merge conflict in ${filename}`,
-          content: Buffer.from(resolvedContent).toString('base64'),
-          branch: tempBranchName,
-          sha: fileSha,
-        });
-
-      // Step 3: Force push the temp branch to the PR branch
-      await octokit.rest.git.updateRef({
-        owner,
-        repo,
-        ref: `heads/${branchName}`,
-        sha: commitData.commit.sha ?? '',
-        force: true,
-      });
-
-      // Step 4: Clean up the temporary branch
-      await octokit.rest.git.deleteRef({
-        owner,
-        repo,
-        ref: `heads/${tempBranchName}`,
-      });
-
-      // Step 5: Update the pull request branch with the base branch to finalize the merge conflict resolution
-      try {
-        await octokit.rest.pulls.updateBranch({
-          owner,
-          repo,
-          pull_number: pullNumber,
-        });
-        logger.info(`Successfully updated PR branch with the base branch`);
-      } catch (error) {
-        logger.warn(`Could not update PR branch with base branch: ${error}`);
-        // This is not a fatal error, the conflict might still be resolved
-      }
-
-      // Mark the resolution as applied in the database
-      await MergeConflictService.markResolutionAsApplied(
-        repoEntity.id,
-        pullNumber,
-        filename,
-        commitData.commit.sha ?? ''
-      );
-
-      // Post a success comment
+    if (pendingResolutions.length === 0) {
+      logger.info(`No pending resolutions found for PR #${pullNumber}`);
       await octokit.rest.issues.createComment({
         owner,
         repo,
         issue_number: pullNumber,
-        body: `✅ Applied resolution for \`${filename}\` in commit ${
-          commitData.commit.sha ?? ''.substring(0, 7)
-        }. The merge conflict has been resolved.`,
+        body: `ℹ️ No pending conflict resolutions to apply.`,
+      });
+      return false;
+    }
+
+    logger.info(
+      `Applying ${pendingResolutions.length} resolutions for PR #${pullNumber}`
+    );
+
+    const baseBranch = pr.base.ref;
+    const headBranch = pr.head.ref;
+    tempBranch = `temp-merge-${pullNumber}-${Date.now()}`;
+
+    const { data: baseRef } = await octokit.rest.git.getRef({
+      owner,
+      repo,
+      ref: `heads/${baseBranch}`,
+    });
+    const baseSha = baseRef.object.sha;
+
+    await octokit.rest.git.createRef({
+      owner,
+      repo,
+      ref: `refs/heads/${tempBranch}`,
+      sha: baseSha,
+    });
+
+    logger.info(`Created temporary branch ${tempBranch} from ${baseBranch}`);
+
+    const { data: prFiles } = await octokit.rest.pulls.listFiles({
+      owner,
+      repo,
+      pull_number: pullNumber,
+    });
+
+    const filesInPR = prFiles.map((file) => file.filename);
+    logger.info(`Found ${filesInPR.length} files changed in PR #${pullNumber}`);
+
+    let successCount = 0;
+    const failedFiles: string[] = [];
+
+    // Copy non-conflicting files from PR branch to temp branch
+    const resolvedFilenames = pendingResolutions.map((r) => r.filename);
+    const nonConflictingFiles = filesInPR.filter(
+      (file) => !resolvedFilenames.includes(file)
+    );
+
+    for (const filename of nonConflictingFiles) {
+      try {
+        let fileContent, fileSha;
+        try {
+          const { data: fileData } = await octokit.rest.repos.getContent({
+            owner,
+            repo,
+            path: filename,
+            ref: headBranch,
+          });
+
+          if (Array.isArray(fileData)) {
+            logger.warn(`Skipping directory: ${filename}`);
+            continue;
+          }
+
+          if (fileData.type === 'file' && 'content' in fileData) {
+            fileContent = fileData.content;
+          } else {
+            throw new Error(`Unexpected file type for ${filename}`);
+          }
+
+          try {
+            const { data: tempFileData } = await octokit.rest.repos.getContent({
+              owner,
+              repo,
+              path: filename,
+              ref: tempBranch,
+            });
+
+            if (!Array.isArray(tempFileData)) {
+              fileSha = tempFileData.sha;
+            }
+          } catch (error) {
+            // File doesn't exist in temp branch yet
+          }
+
+          await octokit.rest.repos.createOrUpdateFileContents({
+            owner,
+            repo,
+            path: filename,
+            message: `Copy changes for ${filename} from PR #${pullNumber}`,
+            content: fileContent,
+            branch: tempBranch,
+            sha: fileSha,
+          });
+
+          logger.info(`Copied non-conflicting file ${filename} to temp branch`);
+        } catch (error) {
+          logger.warn(
+            `Error copying non-conflicting file ${filename}: ${error}`
+          );
+        }
+      } catch (error) {
+        logger.warn(
+          `Error processing non-conflicting file ${filename}: ${error}`
+        );
+      }
+    }
+
+    // Apply conflict resolutions to the temp branch
+    for (const resolution of pendingResolutions) {
+      let applied = false;
+      try {
+        let resolvedContent;
+        try {
+          resolvedContent = JSON.parse(resolution.resolvedCode);
+        } catch (error) {
+          logger.error(
+            `Failed to parse resolvedCode for ${resolution.filename}:`,
+            error
+          );
+          resolvedContent = resolution.resolvedCode;
+        }
+
+        let fileSha;
+        try {
+          const { data: fileData } = await octokit.rest.repos.getContent({
+            owner,
+            repo,
+            path: resolution.filename,
+            ref: tempBranch,
+          });
+
+          if (!Array.isArray(fileData)) {
+            fileSha = fileData.sha;
+          }
+        } catch (error) {
+          // File doesn't exist in temp branch yet
+        }
+
+        logger.info(
+          `Applying resolution for ${resolution.filename} to temp branch ${tempBranch}`
+        );
+
+        const { data: commitData } =
+          await octokit.rest.repos.createOrUpdateFileContents({
+            owner,
+            repo,
+            path: resolution.filename,
+            message: `Resolve merge conflict in ${resolution.filename}`,
+            content: Buffer.from(resolvedContent).toString('base64'),
+            branch: tempBranch,
+            sha: fileSha,
+          });
+
+        successCount++;
+        applied = true;
+        logger.info(
+          `Successfully applied resolution for ${resolution.filename}`
+        );
+
+        await MergeConflictService.markResolutionAsApplied(
+          repoEntity.id,
+          pullNumber,
+          resolution.filename,
+          commitData.commit.sha ?? ''
+        );
+      } catch (error) {
+        logger.error(
+          `Failed to apply resolution for ${resolution.filename}:`,
+          error
+        );
+        failedFiles.push(resolution.filename);
+
+        if (!applied) {
+          try {
+            const resolutionEntity =
+              await MergeConflictService.getResolutionByPRAndFilename(
+                repoEntity.id,
+                pullNumber,
+                resolution.filename
+              );
+
+            if (resolutionEntity) {
+              await MergeConflictService.markAllResolutionsAsNotApplied(
+                repoEntity.id,
+                pullNumber
+              );
+            }
+          } catch (dbError) {
+            logger.error(
+              `Failed to update database status for ${resolution.filename}: ${dbError}`
+            );
+          }
+        }
+      }
+    }
+
+    if (successCount === 0) {
+      logger.error(`Failed to apply any resolutions`);
+
+      if (tempBranch) {
+        try {
+          await octokit.rest.git.deleteRef({
+            owner,
+            repo,
+            ref: `heads/${tempBranch}`,
+          });
+          logger.info(`Deleted temporary branch ${tempBranch}`);
+          tempBranch = null;
+        } catch (deleteError) {
+          logger.error(`Error deleting temporary branch: ${deleteError}`);
+        }
+      }
+
+      await octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: pullNumber,
+        body: `❌ Failed to apply any of the ${pendingResolutions.length} conflict resolutions.`,
+      });
+
+      return false;
+    }
+
+    try {
+      // Force update the PR branch with our temp branch
+      const { data: tempRef } = await octokit.rest.git.getRef({
+        owner,
+        repo,
+        ref: `heads/${tempBranch}`,
+      });
+      const tempSha = tempRef.object.sha;
+
+      await octokit.rest.git.updateRef({
+        owner,
+        repo,
+        ref: `heads/${headBranch}`,
+        sha: tempSha,
+        force: true,
+      });
+
+      logger.info(
+        `Force-updated PR branch ${headBranch} with resolved conflicts`
+      );
+
+      if (tempBranch) {
+        await octokit.rest.git.deleteRef({
+          owner,
+          repo,
+          ref: `heads/${tempBranch}`,
+        });
+        logger.info(`Deleted temporary branch ${tempBranch}`);
+        tempBranch = null;
+      }
+
+      let commentBody = '';
+      if (failedFiles.length > 0) {
+        commentBody = `⚠️ Applied ${successCount} out of ${
+          pendingResolutions.length
+        } conflict resolutions.\n\nFailed to apply resolutions for:\n${failedFiles
+          .map((file) => `- \`${file}\``)
+          .join('\n')}`;
+      } else {
+        commentBody = `✅ Successfully applied all ${successCount} conflict resolutions!`;
+      }
+
+      const { data: updatedPR } = await octokit.rest.pulls.get({
+        owner,
+        repo,
+        pull_number: pullNumber,
+      });
+
+      if (updatedPR.mergeable === true) {
+        commentBody += `\n\n🎉 This PR is now mergeable!`;
+      } else if (updatedPR.mergeable === false) {
+        commentBody += `\n\n⚠️ There are still merge conflicts in this PR that need to be resolved.`;
+      } else {
+        commentBody += `\n\nℹ️ GitHub is still calculating whether the PR is mergeable.`;
+      }
+
+      await octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: pullNumber,
+        body: commentBody,
       });
 
       return true;
     } catch (error) {
-      logger.error(`Failed to apply resolution for ${filename}:`, error);
+      logger.error(`Error updating PR branch: ${error}`);
+
+      // Reset resolution status in the database
+      await MergeConflictService.markAllResolutionsAsNotApplied(
+        repoEntity.id,
+        pullNumber
+      );
+
+      if (tempBranch) {
+        try {
+          await octokit.rest.git.deleteRef({
+            owner,
+            repo,
+            ref: `heads/${tempBranch}`,
+          });
+          logger.info(`Deleted temporary branch ${tempBranch}`);
+          tempBranch = null;
+        } catch (deleteError) {
+          logger.error(`Error deleting temporary branch: ${deleteError}`);
+        }
+      }
 
       await octokit.rest.issues.createComment({
         owner,
         repo,
         issue_number: pullNumber,
-        body: `❌ Failed to apply resolution for \`${filename}\`. Error: ${error}`,
+        body: `❌ Error updating PR branch with resolved conflicts: ${error}`,
       });
 
       return false;
     }
   } catch (error) {
-    logger.error(`Unexpected error in commitResolution: ${error}`);
+    logger.error(`Error in resolveAllConflicts: ${error}`);
+
+    if (tempBranch) {
+      try {
+        await octokit.rest.git.deleteRef({
+          owner,
+          repo,
+          ref: `heads/${tempBranch}`,
+        });
+        logger.info(`Deleted temporary branch ${tempBranch}`);
+      } catch (deleteError) {
+        logger.error(`Error deleting temporary branch: ${deleteError}`);
+      }
+    }
+
+    try {
+      const repoEntity = await RepoService.getRepoByOwnerAndName(owner, repo);
+      if (repoEntity) {
+        await MergeConflictService.markAllResolutionsAsNotApplied(
+          repoEntity.id,
+          pullNumber
+        );
+      }
+    } catch (dbError) {
+      logger.error(
+        `Failed to update database statuses after global error: ${dbError}`
+      );
+    }
+
+    await octokit.rest.issues.createComment({
+      owner,
+      repo,
+      issue_number: pullNumber,
+      body: `❌ An error occurred while trying to apply conflict resolutions: ${error}`,
+    });
+
     return false;
   }
 }
