@@ -1,16 +1,7 @@
 import { MergeResolution } from '../entities/mergeResolution.entity.ts';
 import { AppDataSource } from '../server/server.ts';
+import { ResolutionData } from '../types/mergeConflicts';
 import { logger } from '../utils/logger.ts';
-
-interface ResolutionData {
-  filename: string;
-  resolvedCode: string;
-  baseContent?: string;
-  oursContent?: string;
-  theirsContent?: string;
-  oursBranch?: string;
-  theirsBranch?: string;
-}
 
 export class MergeConflictService {
   private static mergeResolutionRepository =

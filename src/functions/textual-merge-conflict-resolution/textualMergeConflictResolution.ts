@@ -5,37 +5,9 @@ import { MergeResolution } from '../../entities/mergeResolution.entity.ts';
 import { MergeConflictService } from '../../services/mergeConflict.service.ts';
 import { OwnerService } from '../../services/owner.service.ts';
 import { RepoService } from '../../services/repo.service.ts';
+import { ConflictData, ResolutionData } from '../../types/mergeConflicts';
 import { extractConflictedFiles } from '../../utils/detectConflictedFiles.ts';
 import { logger } from '../../utils/logger.ts';
-
-interface FileVersion {
-  content: string;
-  sha: string;
-  ref: string;
-}
-
-interface ConflictData {
-  filename: string;
-  base: FileVersion;
-  ours: FileVersion; // current branch version
-  theirs: FileVersion; // target branch version
-}
-
-interface ResolutionData {
-  filename: string;
-  resolvedCode: string;
-  baseContent?: string;
-  oursContent?: string;
-  theirsContent?: string;
-  fileData?: ConflictData; // Include the original conflict data to access branch names
-}
-
-interface CommitCommand {
-  filename: string;
-  comment_id: number;
-  user: string;
-  timestamp: string;
-}
 
 async function getFileContent(
   octokit: Octokit,
