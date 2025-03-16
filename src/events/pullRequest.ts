@@ -9,6 +9,7 @@ import { PullRequest } from '../entities/pullRequest.entity.ts';
 import { AppDataSource } from '../server/server.ts';  
 import { PrFeedback } from '../entities/prFeedback.entity.ts';  
 import { prioritizePullRequest} from '../functions/pr-prioritization/pr-prioritization.ts';
+import { prioritizePullRequest} from '../functions/pr-prioritization/pr-prioritization.ts';
 
 const messageForNewPRs = fs.readFileSync('./src/messages/message.md', 'utf8');
 const messageForNewLabel = fs.readFileSync('./src/messages/messageNewLabel.md', 'utf8');
