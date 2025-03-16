@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { app } from '../config/appConfig.ts';
 import { PullRequestService } from '../services/pullRequest.service.ts';
 import { CustomError } from '../types/common.d';
