@@ -67,14 +67,12 @@ export async function getResolution(
   pullNumber: number
 ): Promise<ResolutionData[] | undefined> {
   try {
-    // Get PR details
     const { data: pr } = await octokit.rest.pulls.get({
       owner,
       repo,
       pull_number: pullNumber,
     });
 
-    // Use the extractConflictedFiles utility to get conflicted files
     const conflictingFilenames = await extractConflictedFiles(
       octokit,
       owner,
@@ -175,7 +173,7 @@ export async function getResolution(
             baseContent: fileData.base.content,
             oursContent: fileData.ours.content,
             theirsContent: fileData.theirs.content,
-            fileData: fileData, // Include the original conflict data with branch names
+            fileData: fileData,
           });
           logger.info(
             `Successfully resolved conflict for ${fileData.filename}`
@@ -194,7 +192,6 @@ export async function getResolution(
       }
     }
 
-    // Return all resolution data at once
     logger.info('Completed processing all conflict files', {
       totalResolved: resolutionData.length,
       totalConflicts: conflictData.length,
@@ -206,19 +203,16 @@ export async function getResolution(
   }
 }
 
-// Resolution Comment Functions
 function generateGitStyleConflictView(
   baseContent: string,
   oursContent: string,
   theirsContent: string,
   fileData?: ConflictData
 ): string {
-  // Split content into lines
   const baseLines = baseContent.split('\n');
   const ourLines = oursContent.split('\n');
   const theirLines = theirsContent.split('\n');
 
-  // Use diff3 to find conflicts
   const mergeResult = diff3(ourLines, baseLines, theirLines);
 
   let conflictView = '';
@@ -230,7 +224,7 @@ function generateGitStyleConflictView(
       // This is a conflict chunk
       hasConflict = true;
 
-      // Show a standard three-way merge conflict format:
+      // Format as standard three-way merge conflict:
       // <<<<<<< branch-name (Your branch)
       // [your changes]
       // ||||||| BASE
@@ -238,8 +232,6 @@ function generateGitStyleConflictView(
       // =======
       // [their changes]
       // >>>>>>> target-branch-name (Target branch)
-
-      // Use the ref information from the FileVersion objects if available
       const oursRef = fileData?.ours?.ref || 'YOURS';
       const theirsRef = fileData?.theirs?.ref || 'THEIRS';
 
@@ -272,7 +264,7 @@ function generateGitStyleConflictView(
 
       conflictView += `>>>>>>> ${theirsRef} (Target branch)\n`;
     } else {
-      // This is a non-conflict chunk (array of lines)
+      // Non-conflict chunk (array of lines)
       if (Array.isArray(chunk)) {
         for (const line of chunk) {
           conflictView += line + '\n';
@@ -281,18 +273,16 @@ function generateGitStyleConflictView(
     }
   }
 
-  // If no conflicts were found by diff3, create a custom conflict view
+  // If no conflicts were found, create a custom conflict view
   if (!hasConflict) {
     conflictView = '';
 
-    // Add some context at the beginning (up to 3 lines)
+    // Add some context (up to 3 lines)
     const contextLineCount = Math.min(3, baseLines.length);
     for (let i = 0; i < contextLineCount; i++) {
       conflictView += baseLines[i] + '\n';
     }
 
-    // Add a simple diff
-    // Use the ref information from the FileVersion objects if available
     const oursRef = fileData?.ours?.ref || 'YOURS';
     const theirsRef = fileData?.theirs?.ref || 'THEIRS';
 
@@ -315,11 +305,9 @@ function generateResolutionDiff(
   const originalLines = originalContent.split('\n');
   const resolvedLines = resolvedContent.split('\n');
 
-  // Use branch name in label if available
   const displayLabel = 'Resolution';
   let unifiedDiff = `--- Original\n+++ ${displayLabel}\n`;
 
-  // Generate the diff
   let added = 0;
   let removed = 0;
 
@@ -405,7 +393,7 @@ async function storeResolution(
       existingResolution.theirsContent = theirsContent;
       existingResolution.confirmed = false;
       existingResolution.applied = false;
-      existingResolution.lastProcessedTimestamp = currentTimestamp; // Ensure timestamp is updated
+      existingResolution.lastProcessedTimestamp = currentTimestamp;
 
       if (fileData?.ours?.ref) {
         existingResolution.oursBranch = fileData.ours.ref;
@@ -418,7 +406,7 @@ async function storeResolution(
       await MergeConflictService.saveMergeResolution(existingResolution);
       logger.info(`Updated resolution for ${filename} in PR #${pullNumber}`);
     } else {
-      // Store as new resolution with lastProcessedTimestamp
+      // Store as new resolution
       const newResolution = new MergeResolution();
       newResolution.repo = { id: repoEntity.id } as any;
       newResolution.pullRequestNumber = pullNumber;
@@ -465,7 +453,7 @@ export async function createResolutionComment(
 
   // Add content only if we have all three versions
   if (baseContent && oursContent && theirsContent) {
-    // 1. First show the Git-style conflict view
+    // Show the Git-style conflict view
     const conflictView = generateGitStyleConflictView(
       baseContent,
       oursContent,
@@ -473,12 +461,10 @@ export async function createResolutionComment(
       fileData
     );
 
-    // Use branch names in unified diffs if available
     const oursBranchName = fileData?.ours?.ref;
     const theirsBranchName = fileData?.theirs?.ref;
 
     const oursDiff = generateResolutionDiff(oursContent, resolvedCode);
-
     const theirsDiff = generateResolutionDiff(theirsContent, resolvedCode);
 
     commentBody += `
@@ -562,7 +548,6 @@ Please note there will be no further confirmation before applying all resolution
   );
 }
 
-// Commit by command
 export async function checkForCommitResolutionCommands(
   octokit: Octokit,
   owner: string,
@@ -599,15 +584,13 @@ export async function checkForCommitResolutionCommands(
     let applyAllUser: string | undefined;
     let commandTimestamp: string | undefined;
 
-    // Get repository entity once
     const repoEntity = await RepoService.getRepoByOwnerAndName(owner, repo);
     if (!repoEntity) {
       logger.error(`Repository ${owner}/${repo} not found in database`);
       return { applyAll: false };
     }
 
-    // Get the latest processed command timestamp from database
-    // This helps determine which commands are new
+    // Get the latest processed command timestamp
     const latestResolution =
       await MergeConflictService.getLatestProcessedResolution(
         repoEntity.id,
@@ -619,7 +602,7 @@ export async function checkForCommitResolutionCommands(
       `Last processed command timestamp: ${lastProcessedTimestamp || 'none'}`
     );
 
-    // Patterns for generic "apply all" commands
+    // Patterns for "apply all" commands
     const applyAllPatterns = [
       /apply resolution/i,
       /commit resolution/i,
@@ -629,11 +612,11 @@ export async function checkForCommitResolutionCommands(
       /resolve all conflicts/i,
     ];
 
-    // Since comments are sorted by created_at desc, we're checking from most recent to oldest
+    // Check from most recent to oldest comment
     for (const comment of comments) {
       if (comment.user?.type === 'Bot') continue;
 
-      // Skip comments that were already processed
+      // Skip already processed comments
       if (
         lastProcessedTimestamp &&
         new Date(comment.created_at) <= new Date(lastProcessedTimestamp)
@@ -662,7 +645,6 @@ export async function checkForCommitResolutionCommands(
       // Check if this comment contains a resolution command
       for (const pattern of applyAllPatterns) {
         if (comment.body?.match(pattern)) {
-          // Check if there are any unapplied resolutions for this PR
           const pendingResolutions =
             await MergeConflictService.getResolutionsByPullRequest(
               repoEntity.id,
@@ -690,8 +672,6 @@ export async function checkForCommitResolutionCommands(
             logger.info(
               `Found new command from ${comment.user?.login} at ${comment.created_at}, will apply ${unappliedResolutions.length} resolutions`
             );
-
-            // We found a valid command in the most recent comment, no need to check older ones
             break;
           } else {
             logger.info(
@@ -701,7 +681,6 @@ export async function checkForCommitResolutionCommands(
         }
       }
 
-      // If we found a command in this comment, stop processing older comments
       if (applyAll) break;
     }
 
