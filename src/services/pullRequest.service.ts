@@ -18,6 +18,7 @@ import { Octokit } from 'octokit';
 import { In } from 'typeorm';
 import { PRReviewRequest } from '../entities/prReviewRequest.entity.ts';
 import { PRReviewRequestService } from './prReviewRequest.service.ts';
+import { Repo } from '../entities/repo.entity.ts';
 export class PullRequestService {
   private static pullRequestRepository =
     AppDataSource.getRepository(PullRequest);
@@ -159,28 +160,23 @@ export class PullRequestService {
       const { data } = await octokit.rest.users.getAuthenticated();
 
       if (data) {
-        const { id } = data;
-        const isOwner = await OwnerService.getOwnersById(id.toString());
-        if (!isOwner) {
-          const prs = await this.pullRequestRepository.find({
-            where: {
-              created_by_user_id: id,
+        const { login } = data;
+        const prs = await this.pullRequestRepository.find({
+          where: [
+            {
+              created_by_user_login: login,
             },
-            relations: ['repository'],
-          });
-          return prs;
-        } else {
-          const repos = await RepoService.getReposByOwnerId(id.toString());
-
-          const repoIds = repos.map((repo) => repo.id);
-          const prs = await this.pullRequestRepository.find({
-            where: {
-              repository: { id: In(repoIds) },
+            {
+              repository: {
+                owner: {
+                  login: login.toString(),
+                },
+              },
             },
-            relations: ['repository'],
-          });
-          return prs;
-        }
+          ],
+          relations: ['repository', 'repository.owner'],
+        });
+        return prs;
       }
     } catch (error) {
       logger.error(error);

@@ -12,6 +12,7 @@ import { logger } from '../utils/logger.ts';
 import { OwnerService } from './owner.service.ts';
 import { RepoService } from './repo.service.ts';
 import { DeleteResult } from 'typeorm';
+import { Octokit } from 'octokit';
 
 export class IssueService {
   private static issueRepository = AppDataSource.getRepository(Issue);
@@ -150,6 +151,48 @@ export class IssueService {
         .getMany();
     } catch (err) {
       logger.error('Error fetching issues for the user ' + login);
+    }
+  }
+
+  public static async getIssuesByToken(token: string) {
+    try {
+      const octokit = new Octokit({
+        auth: token,
+      });
+      const { data } = await octokit.rest.users.getAuthenticated();
+      if (data) {
+        const { login } = data;
+
+        if (!login) {
+          logger.error(`User is unauthorized to view issues`);
+          throw new Error('unauthorized');
+        } else {
+          const repos = await this.getIssuesByOwnerLogin(login);
+          return repos;
+        }
+      }
+    } catch (error) {
+      logger.error((error as Error).message);
+      if ((error as Error).message === 'unauthorized') {
+        throw new Error('unauthorized');
+      }
+      throw new Error(`Error getting issue by token: ${error}`);
+    }
+  }
+
+  public static async getIssuesByOwnerLogin(login: string) {
+    try {
+      return await this.issueRepository
+        .createQueryBuilder('issue') // Start with the 'issue' table
+        .leftJoinAndSelect('issue.repo', 'repo') // Join 'repo' table
+        .leftJoinAndSelect('repo.owner', 'owner') // Join 'owner' table from 'repo'
+        .where('owner.login = :login', { login }) // Condition 1: Filter by owner's login
+        .orWhere('issue.assignees @> :loginArr', {
+          loginArr: JSON.stringify([login]),
+        }) // Condition 2: Filter by assignees
+        .getMany(); // Get the results
+    } catch (error) {
+      throw new Error(`Error getting issues from db: ${error}`);
     }
   }
 }
