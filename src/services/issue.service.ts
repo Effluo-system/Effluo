@@ -12,6 +12,7 @@ import { logger } from '../utils/logger.ts';
 import { OwnerService } from './owner.service.ts';
 import { RepoService } from './repo.service.ts';
 import { DeleteResult } from 'typeorm';
+import { Octokit } from 'octokit';
 
 export class IssueService {
   private static issueRepository = AppDataSource.getRepository(Issue);
@@ -150,6 +151,49 @@ export class IssueService {
         .getMany();
     } catch (err) {
       logger.error('Error fetching issues for the user ' + login);
+    }
+  }
+
+  public static async getIssuesByToken(token: string) {
+    try {
+      const octokit = new Octokit({
+        auth: token,
+      });
+      const { data } = await octokit.rest.users.getAuthenticated();
+      if (data) {
+        const { id } = data;
+        const isOwner = await OwnerService.getOwnersById(id.toString());
+        if (!isOwner) {
+          logger.error(`User is unauthorized to view issues`);
+          throw new Error('unauthorized');
+        } else {
+          const repos = await this.getReviewsByOwnerId(isOwner.id);
+          return repos;
+        }
+      }
+    } catch (error) {
+      logger.error((error as Error).message);
+      if ((error as Error).message === 'unauthorized') {
+        throw new Error('unauthorized');
+      }
+      throw new Error(`Error getting pull requests by token: ${error}`);
+    }
+  }
+
+  public static async getReviewsByOwnerId(ownerId: string) {
+    try {
+      const owner = await OwnerService.getOwnersById(ownerId.toString());
+      return await this.issueRepository
+        .createQueryBuilder('issue')
+        .leftJoinAndSelect('issue.repo', 'repo')
+        .leftJoinAndSelect('repo.owner', 'owner')
+        .where('owner.id = :ownerId', { ownerId }) // Condition 1
+        .orWhere('issue.assignees @> :login', {
+          login: JSON.stringify([owner?.login]),
+        }) // Condition 2
+        .getMany();
+    } catch (error) {
+      throw new Error(`Error getting reviews from db: ${error}`);
     }
   }
 }

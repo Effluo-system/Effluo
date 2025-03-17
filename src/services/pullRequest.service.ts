@@ -163,10 +163,19 @@ export class PullRequestService {
         const isOwner = await OwnerService.getOwnersById(id.toString());
         if (!isOwner) {
           const prs = await this.pullRequestRepository.find({
-            where: {
-              created_by_user_id: id,
-            },
-            relations: ['repository'],
+            where: [
+              {
+                created_by_user_id: id,
+              },
+              {
+                repository: {
+                  owner: {
+                    id: id.toString(),
+                  },
+                },
+              },
+            ],
+            relations: ['repository', 'repository.owner'],
           });
           return prs;
         } else {

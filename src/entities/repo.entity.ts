@@ -23,7 +23,7 @@ export class Repo {
   url!: string;
 
   @ManyToOne(() => Owner, (owner) => owner.repos, {
-    cascade: false,
+    onUpdate: 'CASCADE',
   })
   owner!: Owner;
 

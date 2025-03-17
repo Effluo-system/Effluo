@@ -1,5 +1,8 @@
+import { Octokit } from 'octokit';
 import { Review } from '../entities/review.entity.ts';
 import { AppDataSource } from '../server/server.ts';
+import { OwnerService } from './owner.service.ts';
+import { logger } from '../utils/logger.ts';
 
 export class ReviewService {
   private static reviewRepository = AppDataSource.getRepository(Review);
@@ -66,6 +69,61 @@ export class ReviewService {
         .getMany();
     } catch (error) {
       throw new Error(`Error getting latest reviews from db: ${error}`);
+    }
+  }
+
+  public static async getReviewsByToken(token: string) {
+    try {
+      const octokit = new Octokit({
+        auth: token,
+      });
+      const { data } = await octokit.rest.users.getAuthenticated();
+      if (data) {
+        const { id } = data;
+        const isOwner = await OwnerService.getOwnersById(id.toString());
+        if (!isOwner) {
+          logger.error(`User is unauthorized to view reviews`);
+          throw new Error('unauthorized');
+        } else {
+          console.log(JSON.stringify(data));
+          const repos = await this.getReviewsByOwnerId(isOwner.id);
+          return repos;
+        }
+      }
+    } catch (error) {
+      logger.error((error as Error).message);
+      if ((error as Error).message === 'unauthorized') {
+        throw new Error('unauthorized');
+      }
+      throw new Error(`Error getting pull requests by token: ${error}`);
+    }
+  }
+
+  public static async getReviewsByOwnerId(ownerId: string) {
+    try {
+      return await this.reviewRepository.find({
+        where: [
+          {
+            created_by_user_id: parseInt(ownerId),
+          },
+          {
+            pull_request: {
+              repository: {
+                owner: {
+                  id: ownerId,
+                },
+              },
+            },
+          },
+        ],
+        relations: [
+          'pull_request',
+          'pull_request.repository',
+          'pull_request.repository.owner',
+        ],
+      });
+    } catch (error) {
+      throw new Error(`Error getting reviews from db: ${error}`);
     }
   }
 }

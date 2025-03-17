@@ -14,7 +14,7 @@ export class OwnerService {
 
   public static async getOwnersById(id: string): Promise<Owner | null> {
     try {
-      return this.ownerRepository.findOne({
+      return await this.ownerRepository.findOne({
         where: {
           id,
         },
