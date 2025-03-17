@@ -28,6 +28,25 @@ export class RepoService {
     }
   }
 
+  public static async getRepoByOwnerAndName(
+    owner: string,
+    name: string
+  ): Promise<Repo | null> {
+    try {
+      return this.repoRepository.findOne({
+        where: {
+          full_name: name,
+          owner: {
+            login: owner,
+          },
+        },
+        relations: ['owner'],
+      });
+    } catch (error) {
+      throw new Error(`Error getting repo ${owner}/${name} from db: ${error}`);
+    }
+  }
+
   public static async getAllRepo(): Promise<Repo[]> {
     try {
       return this.repoRepository.find();
@@ -56,7 +75,6 @@ export class RepoService {
         auth: token,
       });
       const { data } = await octokit.rest.users.getAuthenticated();
-
       if (data) {
         const { id } = data;
         const isOwner = await OwnerService.getOwnersById(id.toString());
