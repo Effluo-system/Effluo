@@ -72,4 +72,20 @@ export class PRReviewRequestService {
       throw new Error(`Error getting PR Review Request from db: ${error}`);
     }
   }
+
+  public static async findByUserLoginAndRepoID(login: string, repoID: string) {
+    try {
+      return this.reviewRequestRepository
+        .createQueryBuilder('prReviewRequest')
+        .innerJoinAndSelect('prReviewRequest.pr', 'pullRequest')
+        .innerJoinAndSelect('pullRequest.repository', 'repo')
+        .where('prReviewRequest.assignees @> :login', {
+          login: JSON.stringify([login]),
+        })
+        .andWhere('repo.id = :repoID', { repoID })
+        .getMany();
+    } catch (error) {
+      throw new Error(`Error getting PR Review Request from db: ${error}`);
+    }
+  }
 }

@@ -140,4 +140,16 @@ export class IssueService {
       );
     }
   }
+
+  public static async findByUserLogin(login: string) {
+    try {
+      return await this.issueRepository
+        .createQueryBuilder('issue')
+        .where('issue.assignees @> :login', { login: JSON.stringify([login]) })
+        .andWhere('issue.weight > 0')
+        .getMany();
+    } catch (err) {
+      logger.error('Error fetching issues for the user ' + login);
+    }
+  }
 }

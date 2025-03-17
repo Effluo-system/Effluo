@@ -122,53 +122,56 @@ app.webhooks.on('pull_request.reopened', async ({ octokit, payload }) => {
 });
 
 //Subscribe to "label.created" webhook events
-app.webhooks.on('pull_request.labeled', async ({ octokit, payload }) => {
-  try {
-    if (!payload.sender.login.includes('bot')) {
-      logger.info(`Received a label event for #${payload?.label?.name}`);
+app.webhooks.on(
+  ['pull_request.labeled', `pull_request.unlabeled`],
+  async ({ octokit, payload }) => {
+    try {
+      if (!payload.sender.login.includes('bot')) {
+        logger.info(`Received a label event for #${payload?.label?.name}`);
 
-      await octokit.rest.issues.createComment({
-        owner: payload.repository.owner.login,
-        repo: payload.repository.name,
-        issue_number: payload.pull_request.number,
-        body: messageForNewLabel,
-      });
+        await octokit.rest.issues.createComment({
+          owner: payload.repository.owner.login,
+          repo: payload.repository.name,
+          issue_number: payload.pull_request.number,
+          body: messageForNewLabel,
+        });
 
-      let pr = await PullRequestService.getPullRequestById(
-        payload?.pull_request?.id.toString()
-      );
-      if (!pr) {
-        logger.info(`Pull request not found. Creating new pull request ...`);
-        const files = await analyzePullRequest(
-          octokit,
-          payload.repository.owner.login,
-          payload.repository.name,
-          payload.pull_request.number,
-          payload.pull_request.base.ref,
-          payload.pull_request.head.ref
+        let pr = await PullRequestService.getPullRequestById(
+          payload?.pull_request?.id.toString()
         );
+        if (!pr) {
+          logger.info(`Pull request not found. Creating new pull request ...`);
+          const files = await analyzePullRequest(
+            octokit,
+            payload.repository.owner.login,
+            payload.repository.name,
+            payload.pull_request.number,
+            payload.pull_request.base.ref,
+            payload.pull_request.head.ref
+          );
 
-        const reviewDifficulty = await calculateReviewDifficultyOfPR(files);
-        pr = await PullRequestService.initiatePullRequestCreationFlow(
-          payload,
-          reviewDifficulty
-        );
+          const reviewDifficulty = await calculateReviewDifficultyOfPR(files);
+          pr = await PullRequestService.initiatePullRequestCreationFlow(
+            payload,
+            reviewDifficulty
+          );
+        }
+        pr.labels = payload?.pull_request?.labels?.map((labels) => labels.name);
+        await PullRequestService.updatePullRequest(pr);
+        logger.info(`Pull request updated successfully`);
       }
-      pr.labels = payload.pull_request.labels.map((labels) => labels.name);
-      await PullRequestService.updatePullRequest(pr);
-      logger.info(`Pull request updated successfully`);
-    }
-  } catch (error) {
-    const customError = error as CustomError;
-    if (customError.response) {
-      logger.error(
-        `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
-      );
-    } else {
-      logger.error(error);
+    } catch (error) {
+      const customError = error as CustomError;
+      if (customError.response) {
+        logger.error(
+          `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
+        );
+      } else {
+        logger.error(error);
+      }
     }
   }
-});
+);
 
 app.webhooks.on('pull_request.closed', async ({ octokit, payload }) => {
   try {

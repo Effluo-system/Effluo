@@ -106,28 +106,32 @@ app.webhooks.on(
           payload,
           reviewDifficulty
         );
-      }
-      const request = await PRReviewRequestService.findByPRId(
-        payload?.repository?.id?.toString()
-      );
-      if (!request) {
-        await PRReviewRequestService.createPRReviewRequest({
-          assignees: payload?.pull_request?.requested_reviewers
-            .filter((person): person is User => 'login' in person) // Type guard to ensure `login` exists
-            .map((person) => person.login),
-          labels: payload?.pull_request?.labels?.map((label) => label?.name),
-          weight: pr?.reviewDifficulty,
-          pr: pr,
-        });
       } else {
-        request.assignees = [
-          ...(request?.assignees ?? []),
-          ...payload?.pull_request?.requested_reviewers
-            .filter((person): person is User => 'login' in person)
-            .map((person) => person.login),
-        ];
+        pr.assignees = payload?.pull_request?.requested_reviewers
+          .filter((person): person is User => 'login' in person) // Type guard to ensure `login` exists
+          .map((person) => person.login);
+        await PullRequestService.updatePullRequest(pr);
+        const request = await PRReviewRequestService.findByPRId(
+          payload?.repository?.id?.toString()
+        );
+        if (!request) {
+          await PRReviewRequestService.createPRReviewRequest({
+            assignees: payload?.pull_request?.requested_reviewers
+              .filter((person): person is User => 'login' in person) // Type guard to ensure `login` exists
+              .map((person) => person.login),
+            labels: payload?.pull_request?.labels?.map((label) => label?.name),
+            weight: pr?.reviewDifficulty,
+            pr: pr,
+          });
+        } else {
+          request.assignees = [
+            ...(request?.assignees ?? []),
+            ...payload?.pull_request?.requested_reviewers
+              .filter((person): person is User => 'login' in person)
+              .map((person) => person.login),
+          ];
+        }
       }
-
       logger.info('Review Request created successfully');
     } catch (error) {
       const customError = error as CustomError;

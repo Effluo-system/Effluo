@@ -8,6 +8,7 @@ import type {
   PullRequestReviewRequestRemovedEvent,
   PullRequestReviewSubmittedEvent,
   PullRequestSynchronizeEvent,
+  PullRequestUnlabeledEvent,
   User,
 } from '@octokit/webhooks-types/schema.d.ts';
 import { logger } from '../utils/logger.ts';
@@ -76,6 +77,7 @@ export class PullRequestService {
       | PullRequestSynchronizeEvent
       | PullRequestLabeledEvent
       | PullRequestReviewRequestedEvent
+      | PullRequestUnlabeledEvent
       | PullRequestReviewRequestRemovedEvent,
     reviewDifficulty: number
   ): Promise<PullRequest> {
@@ -109,15 +111,14 @@ export class PullRequestService {
         });
         logger.info('Repo created successfully');
       }
-
       const pr = await PullRequestService.createPullRequest({
         id: payload?.pull_request?.id.toString(),
         title: payload?.pull_request?.title,
         body: payload?.pull_request?.body,
         assignee: payload?.pull_request?.assignee?.login || null,
-        assignees: payload?.pull_request?.assignees?.map(
-          (assignee) => assignee.login
-        ),
+        assignees: payload?.pull_request?.requested_reviewers
+          .filter((person): person is User => 'login' in person)
+          .map((person) => person.login),
         created_at: new Date(payload?.pull_request?.created_at),
         closed_at: payload?.pull_request?.closed_at
           ? new Date(payload?.pull_request?.closed_at)
@@ -132,7 +133,7 @@ export class PullRequestService {
         reviewDifficulty: reviewDifficulty,
         review_requests: [],
       });
-      if (payload.pull_request.assignees.length > 0) {
+      if (payload?.pull_request?.requested_reviewers?.length > 0) {
         await PRReviewRequestService.createPRReviewRequest({
           assignees: payload?.pull_request?.requested_reviewers
             .filter((person): person is User => 'login' in person) // Type guard to ensure `login` exists

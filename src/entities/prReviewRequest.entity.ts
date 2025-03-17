@@ -26,7 +26,7 @@ export class PRReviewRequest {
 
   @ManyToOne(() => PullRequest, (pr) => pr.review_requests, {
     nullable: false,
-    cascade: false,
+    onDelete: 'CASCADE',
   })
   pr!: Relation<PullRequest>;
 }
