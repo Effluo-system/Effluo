@@ -4,14 +4,20 @@ import type {
   PullRequestLabeledEvent,
   PullRequestOpenedEvent,
   PullRequestReopenedEvent,
+  PullRequestReviewRequestedEvent,
+  PullRequestReviewRequestRemovedEvent,
   PullRequestReviewSubmittedEvent,
   PullRequestSynchronizeEvent,
+  PullRequestUnlabeledEvent,
+  User,
 } from '@octokit/webhooks-types/schema.d.ts';
 import { logger } from '../utils/logger.ts';
 import { OwnerService } from './owner.service.ts';
 import { RepoService } from './repo.service.ts';
 import { Octokit } from 'octokit';
 import { In } from 'typeorm';
+import { PRReviewRequest } from '../entities/prReviewRequest.entity.ts';
+import { PRReviewRequestService } from './prReviewRequest.service.ts';
 export class PullRequestService {
   private static pullRequestRepository =
     AppDataSource.getRepository(PullRequest);
@@ -69,7 +75,10 @@ export class PullRequestService {
       | PullRequestReopenedEvent
       | PullRequestReviewSubmittedEvent
       | PullRequestSynchronizeEvent
-      | PullRequestLabeledEvent,
+      | PullRequestLabeledEvent
+      | PullRequestReviewRequestedEvent
+      | PullRequestUnlabeledEvent
+      | PullRequestReviewRequestRemovedEvent,
     reviewDifficulty: number
   ): Promise<PullRequest> {
     try {
@@ -107,9 +116,9 @@ export class PullRequestService {
         title: payload?.pull_request?.title,
         body: payload?.pull_request?.body,
         assignee: payload?.pull_request?.assignee?.login || null,
-        assignees: payload?.pull_request?.assignees?.map(
-          (assignee) => assignee.login
-        ),
+        assignees: payload?.pull_request?.requested_reviewers
+          .filter((person): person is User => 'login' in person)
+          .map((person) => person.login),
         created_at: new Date(payload?.pull_request?.created_at),
         closed_at: payload?.pull_request?.closed_at
           ? new Date(payload?.pull_request?.closed_at)
@@ -122,7 +131,18 @@ export class PullRequestService {
         reviews: [],
         labels: payload?.pull_request?.labels?.map((label) => label.name),
         reviewDifficulty: reviewDifficulty,
+        review_requests: [],
       });
+      if (payload?.pull_request?.requested_reviewers?.length > 0) {
+        await PRReviewRequestService.createPRReviewRequest({
+          assignees: payload?.pull_request?.requested_reviewers
+            .filter((person): person is User => 'login' in person) // Type guard to ensure `login` exists
+            .map((person) => person.login),
+          labels: payload?.pull_request?.labels?.map((label) => label.name),
+          pr: pr,
+          weight: reviewDifficulty,
+        });
+      }
       logger.info('Pull request created successfully');
       return pr;
     } catch (error) {

@@ -58,7 +58,6 @@ export const pushWorkflowFilesToGithub = async (
       repo,
       ref: `heads/${branch}`,
     });
-    logger.info('Ref data:', refData);
     const sha = refData.object.sha;
 
     let committableFiles: CommittableFile[] = [];

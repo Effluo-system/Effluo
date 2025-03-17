@@ -8,6 +8,7 @@ import { Repo } from '../entities/repo.entity.ts';
 import { Review } from '../entities/review.entity.ts';
 import { UserReviewSummary } from '../entities/userReviewSummary.entity.ts';
 import createIssueTableMigration from './migrations/create-issue-table.migration.ts';
+import { PRReviewRequest } from '../entities/prReviewRequest.entity.ts';
 import { PrFeedback } from '../entities/prFeedback.entity.ts';
 
 dotenv.config();
@@ -28,7 +29,9 @@ const dbConfig: DataSourceOptions = {
     Repo,
     Owner,
     UserReviewSummary,
-    Issue, PrFeedback,
+    Issue,
+    PRReviewRequest,
+    PrFeedback,
     MergeResolution,
   ],
 };

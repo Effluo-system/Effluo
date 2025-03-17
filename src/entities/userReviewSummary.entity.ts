@@ -18,7 +18,7 @@ export class UserReviewSummary {
   review_summary!: FrequencySummaryResultForEachRepo;
 
   @OneToOne(() => Repo, (repo) => repo.user_review_summary, {
-    cascade: false,
+    onDelete: 'CASCADE',
   })
   @JoinColumn()
   repo!: Relation<Repo>;

@@ -19,7 +19,7 @@ export class Review {
   created_by_user_login!: string;
 
   @ManyToOne(() => PullRequest, (pr) => pr.reviews, {
-    cascade: false,
+    onDelete: 'CASCADE',
   })
   pull_request!: Relation<PullRequest>;
 }
