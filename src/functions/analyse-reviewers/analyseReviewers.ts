@@ -18,50 +18,58 @@ import { PRReviewRequestService } from '../../services/prReviewRequest.service.t
 import { IssueService } from '../../services/issue.service.ts';
 
 export const analyzeReviewers = async () => {
-  const reviews = await ReviewService.getReviewsMadeInTheCurrentWeek();
-  const repoData: UserReviewSummary = {};
+  try {
+    logger.info('Initializing reviewer analysis algorithm');
+    const reviews = await ReviewService.getReviewsMadeInTheCurrentWeek();
+    const repoData: UserReviewSummary = {};
 
-  logger.debug('Creating summary ...');
+    logger.debug('Creating summary ...');
 
-  // Populate the data structure
-  reviews.forEach((review) => {
-    const repoId = review.pull_request.repository.id;
-    const user = review.created_by_user_login;
-    const labels = review.pull_request?.labels || [];
-    // Initialize repository if not already present
-    if (!repoData[repoId]) {
-      repoData[repoId] = {};
-    }
-
-    // Initialize user if not already present under this repository
-    if (!repoData[repoId][user]) {
-      repoData[repoId][user] = {};
-    }
-
-    // Count labels for the user within this repository
-    labels.forEach((label) => {
-      if (!repoData[repoId][user][label]) {
-        repoData[repoId][user][label] = 0;
+    // Populate the data structure
+    reviews.forEach((review) => {
+      const repoId = review.pull_request.repository.id;
+      const user = review.created_by_user_login;
+      const labels = review.pull_request?.labels || [];
+      // Initialize repository if not already present
+      if (!repoData[repoId]) {
+        repoData[repoId] = {};
       }
-      repoData[repoId][user][label] = repoData[repoId][user][label] + 1;
+
+      // Initialize user if not already present under this repository
+      if (!repoData[repoId][user]) {
+        repoData[repoId][user] = {};
+      }
+
+      // Count labels for the user within this repository
+      labels.forEach((label) => {
+        if (!repoData[repoId][user][label]) {
+          repoData[repoId][user][label] = 0;
+        }
+        repoData[repoId][user][label] = repoData[repoId][user][label] + 1;
+      });
     });
-  });
-  logger.debug('Summary created');
-  // const metrics = findMostWorkedInCategory(repoData);
-  const ranks = rankDevelopersByCategory(repoData);
-  const mostSuitable = await findMostSuitableDev(ranks);
-  await fetchSummaryForEachRepo(mostSuitable);
-  logger.debug('Metrics calculated successfully');
+    logger.debug('Summary created');
+    // const metrics = findMostWorkedInCategory(repoData);
+    const ranks = rankDevelopersByCategory(repoData);
+    const mostSuitable = await findMostSuitableDev(ranks);
+    await fetchSummaryForEachRepo(mostSuitable);
+    logger.debug('Metrics calculated successfully');
+    logger.info('Reviewer analysis completed successfully');
+    return { Success: true };
+  } catch (err) {
+    logger.error(err);
+    return { Success: false, Error: err };
+  }
 };
 
-export const analyzeReviewersCron = (cron: String = '30 * * * * *') => {
-  // schedule.scheduleJob(cron as Spec, () => {
-  try {
-    analyzeReviewers();
-  } catch (err) {
-    logger.error('Error occurred while analyzing reviewers', err);
-  }
-  // });
+export const analyzeReviewersCron = (cron: String = '0 0 * * *') => {
+  schedule.scheduleJob(cron as Spec, () => {
+    try {
+      analyzeReviewers();
+    } catch (err) {
+      logger.error('Error occurred while analyzing reviewers', err);
+    }
+  });
 };
 
 function findMostWorkedInCategory(

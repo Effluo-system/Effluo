@@ -114,7 +114,7 @@ export class PRReviewRequestService {
             .leftJoinAndSelect('pr.repository', 'repo')
             .leftJoinAndSelect('repo.owner', 'owner')
             .where('owner.id = :id', { id: isOwner?.id })
-            .orWhere('issue.assignees @> :login', {
+            .orWhere('request.assignees @> :login', {
               login: JSON.stringify([owner?.login]),
             }) // Condition 2
             .getMany();
@@ -126,7 +126,7 @@ export class PRReviewRequestService {
       if ((error as Error).message === 'unauthorized') {
         throw new Error('unauthorized');
       }
-      throw new Error(`Error getting pull requests by token: ${error}`);
+      throw new Error(`Error getting Review requests by token: ${error}`);
     }
   }
 }

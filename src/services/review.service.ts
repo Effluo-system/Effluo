@@ -79,14 +79,12 @@ export class ReviewService {
       });
       const { data } = await octokit.rest.users.getAuthenticated();
       if (data) {
-        const { id } = data;
-        const isOwner = await OwnerService.getOwnersById(id.toString());
-        if (!isOwner) {
+        const { login } = data;
+        if (!login) {
           logger.error(`User is unauthorized to view reviews`);
           throw new Error('unauthorized');
         } else {
-          console.log(JSON.stringify(data));
-          const repos = await this.getReviewsByOwnerId(isOwner.id);
+          const repos = await this.getReviewsByOwnerLogin(login);
           return repos;
         }
       }
@@ -99,18 +97,18 @@ export class ReviewService {
     }
   }
 
-  public static async getReviewsByOwnerId(ownerId: string) {
+  public static async getReviewsByOwnerLogin(login: string) {
     try {
       return await this.reviewRepository.find({
         where: [
           {
-            created_by_user_id: parseInt(ownerId),
+            created_by_user_login: login,
           },
           {
             pull_request: {
               repository: {
                 owner: {
-                  id: ownerId,
+                  login: login,
                 },
               },
             },

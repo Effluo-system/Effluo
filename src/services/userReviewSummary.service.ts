@@ -71,19 +71,19 @@ export class UserReviewSummaryService {
         auth: token,
       });
       const { data } = await octokit.rest.users.getAuthenticated();
+
       if (data) {
-        const { id } = data;
-        const isOwner = await OwnerService.getOwnersById(id.toString());
-        if (!isOwner) {
+        const { login } = data;
+
+        if (!login) {
           logger.error(`User is unauthorized to view summaries`);
           throw new Error('unauthorized');
         } else {
-          console.log(isOwner.id);
           const summaries = await this.reviewSummaryRepository.find({
             where: {
               repo: {
                 owner: {
-                  id: isOwner?.id,
+                  login: login,
                 },
               },
             },

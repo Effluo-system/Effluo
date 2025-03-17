@@ -161,13 +161,13 @@ export class IssueService {
       });
       const { data } = await octokit.rest.users.getAuthenticated();
       if (data) {
-        const { id } = data;
-        const isOwner = await OwnerService.getOwnersById(id.toString());
-        if (!isOwner) {
+        const { login } = data;
+
+        if (!login) {
           logger.error(`User is unauthorized to view issues`);
           throw new Error('unauthorized');
         } else {
-          const repos = await this.getReviewsByOwnerId(isOwner.id);
+          const repos = await this.getIssuesByOwnerLogin(login);
           return repos;
         }
       }
@@ -176,24 +176,23 @@ export class IssueService {
       if ((error as Error).message === 'unauthorized') {
         throw new Error('unauthorized');
       }
-      throw new Error(`Error getting pull requests by token: ${error}`);
+      throw new Error(`Error getting issue by token: ${error}`);
     }
   }
 
-  public static async getReviewsByOwnerId(ownerId: string) {
+  public static async getIssuesByOwnerLogin(login: string) {
     try {
-      const owner = await OwnerService.getOwnersById(ownerId.toString());
       return await this.issueRepository
-        .createQueryBuilder('issue')
-        .leftJoinAndSelect('issue.repo', 'repo')
-        .leftJoinAndSelect('repo.owner', 'owner')
-        .where('owner.id = :ownerId', { ownerId }) // Condition 1
-        .orWhere('issue.assignees @> :login', {
-          login: JSON.stringify([owner?.login]),
-        }) // Condition 2
-        .getMany();
+        .createQueryBuilder('issue') // Start with the 'issue' table
+        .leftJoinAndSelect('issue.repo', 'repo') // Join 'repo' table
+        .leftJoinAndSelect('repo.owner', 'owner') // Join 'owner' table from 'repo'
+        .where('owner.login = :login', { login }) // Condition 1: Filter by owner's login
+        .orWhere('issue.assignees @> :loginArr', {
+          loginArr: JSON.stringify([login]),
+        }) // Condition 2: Filter by assignees
+        .getMany(); // Get the results
     } catch (error) {
-      throw new Error(`Error getting reviews from db: ${error}`);
+      throw new Error(`Error getting issues from db: ${error}`);
     }
   }
 }
