@@ -132,14 +132,15 @@ export async function analyzePullRequest2(
   prNumber: number,
   baseBranch: string,
   headBranch: string
-): Promise<
-  {
+): Promise<{
     filename: string;
     baseVersionContent: string;
     mainBranchContent: string;
     prBranchContent: string;
-  }[]
-> {
+}[]> {
+  // Get the merge base between the baseBranch and headBranch
+  const mergeBase = await getMergeBase(octokit, owner, repo, baseBranch, headBranch);
+
   const changedFiles = await octokit.rest.pulls.listFiles({
     owner,
     repo,
@@ -150,9 +151,10 @@ export async function analyzePullRequest2(
   for (const file of changedFiles.data) {
     const { filename, status } = file;
 
-    const baseVersionContent = await fetchFileContent(octokit, owner, repo, filename, baseBranch);
-    const mainBranchContent = await fetchFileContent(octokit, owner, repo, filename, headBranch);
-    const prBranchContent = await fetchFileContent(octokit, owner, repo, filename, headBranch);
+    // Fetch content from merge base, head (PR branch), and target (main) branches
+    const baseVersionContent = await fetchFileContent(octokit, owner, repo, filename, mergeBase);
+    const mainBranchContent = await fetchFileContent(octokit, owner, repo, filename, baseBranch); // The main (target) branch content
+    const prBranchContent = await fetchFileContent(octokit, owner, repo, filename, headBranch); // The PR branch content
 
     if (status === "added" || status === "removed") {
       console.log(`Skipping ${filename} (${status}) - Not modified in both branches.`);
@@ -194,8 +196,9 @@ async function getMergeBase(octokit: any, owner: string, repo: string, mainBranc
     }
 }
 
-
-
+/**
+ * Analyzes each file individually for semantic conflicts and accumulates results
+ */
 export async function analyzeConflicts(
   files: {
     filename: string;
@@ -209,19 +212,24 @@ export async function analyzeConflicts(
     return "### Semantic Conflict Analysis\n\nNo modified files found for conflict analysis.";
   }
 
-  const prompt = files
-  .map(
-    (item) => `
-Analyze the following changes for semantic merge conflicts.
+  const results = [];
+  let conflictDetected = false;
+
+  // Process each file individually
+  for (const file of files) {
+    console.log(`Analyzing file: ${file.filename}`);
+    
+    const prompt = `
+You are an expert code reviewer analyzing semantic merge conflicts in a Git repository. Analyze the following changes for semantic merge conflicts.
 
 Base Branch (Common Ancestor):
-${item.baseVersionContent}
+${file.baseVersionContent}
 
 Feature Branch (Pull Request Code):
-${item.prBranchContent}
+${file.prBranchContent}
 
 Target Branch (Updated Main Branch):
-${item.mainBranchContent}
+${file.mainBranchContent}
 
 Return a JSON object with:
 {
@@ -230,50 +238,81 @@ Return a JSON object with:
 }
 
 Do not format the response with triple backticks (\` \`\`\` \`) or add \`json\` tags.
-`
-  )
-  .join("\n\n");
+`;
 
-  console.log("Generated Prompt:", prompt);
-
-  try {
-    // Send request to the AI API
-    const response = await axios.post(
-      "http://localhost:11434/api/generate",
-      {
-        model: "qwen", 
-        prompt: prompt, 
-        format: "json",
-        stream: false,
-        keep_alive: -1,
-      },
-      { headers: { "Content-Type": "application/json" } }
-    );
-
-    console.log("Raw AI Response:", response.data);
-
-    if (!response.data || !response.data.response) {
-      console.error("AI API returned an empty response.");
-      return "### Semantic Conflict Analysis\n\nError: AI API returned an empty response.";
-    }
-
-    let responseData;
     try {
-      responseData =
-        typeof response.data.response === "string"
-          ? JSON.parse(response.data.response)
-          : response.data.response;
-    } catch (jsonError) {
-      console.error("JSON parsing error:", jsonError);
-      console.error("Raw AI response (before parsing error):", response.data.response);
-      return "### Semantic Conflict Analysis\n\nError: AI response was not valid JSON.";
-    }
+      // Send request to the AI API for this single file
+      const response = await axios.post(
+        "http://localhost:11434/api/generate",
+        {
+          model: "qwen", 
+          prompt: prompt, 
+          format: "json",
+          stream: false,
+          keep_alive: -1,
+        },
+        { headers: { "Content-Type": "application/json" } }
+      );
 
-    return responseData.conflict === "yes"
-      ? `### Semantic Conflict Analysis\n**Conflict Detected:** ${responseData.explanation}`
-      : "### Semantic Conflict Analysis\n\nNo semantic conflicts detected.";
-  } catch (error) {
-    console.error("Error analyzing conflicts:", error);
-    return "### Semantic Conflict Analysis\n\nError analyzing conflicts during merge review.";
+      if (!response.data || !response.data.response) {
+        console.error(`AI API returned an empty response for file: ${file.filename}`);
+        results.push({
+          filename: file.filename,
+          conflict: false,
+          explanation: "Error: AI API returned an empty response."
+        });
+        continue;
+      }
+
+      let responseData;
+      try {
+        responseData = JSON.parse(response.data.response);
+      } catch (jsonError) {
+        console.error(`JSON parsing error for file ${file.filename}:`, jsonError);
+        console.error("Raw AI response (before parsing error):", response.data.response);
+        results.push({
+          filename: file.filename,
+          conflict: false,
+          explanation: "Error: AI response was not valid JSON."
+        });
+        continue;
+      }
+
+      // Add file analysis results to accumulated results
+      if (responseData.conflict === "yes") {
+        conflictDetected = true;
+        results.push({
+          filename: file.filename,
+          conflict: true,
+          explanation: responseData.explanation
+        });
+      } else {
+        results.push({
+          filename: file.filename,
+          conflict: false,
+          explanation: "No conflicts detected in this file."
+        });
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`Error analyzing conflicts for file ${file.filename}:`, error);
+      results.push({
+        filename: file.filename,
+        conflict: false,
+        explanation: `Error: Failed to analyze file (${errorMessage})`
+      });
+    }
+  }
+
+  // Generate the final report
+  if (conflictDetected) {
+    const conflictFiles = results
+      .filter(result => result.conflict)
+      .map(result => `\n## File: \`${result.filename}\`\n${result.explanation}`)
+      .join('\n\n');
+    
+    return `### Semantic Conflict Analysis\n**Conflicts Detected in ${results.filter(r => r.conflict).length}/${files.length} files:**${conflictFiles}`;
+  } else {
+    return "### Semantic Conflict Analysis\n\nNo semantic conflicts detected across all modified files.";
   }
 }

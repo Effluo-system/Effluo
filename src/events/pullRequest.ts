@@ -14,15 +14,15 @@ const messageForNewLabel = fs.readFileSync('./src/messages/messageNewLabel.md', 
 
 const postAIValidationForm = async (octokit: any, owner: string, repo: string, issueNumber: number) => {
   const validationMessage = `
-    ## AI Conflict Detection Results
-    
-    Our AI has analyzed this pull request and detected potential semantic conflicts.
-    
-    **Please validate this finding by commenting with one of these simple responses:**
-    - \`#Confirm\` - If you confirm this is a conflict
-    - \`#NotAConflict\` - If this is not a conflict (please add a brief explanation)
-    
-    *Note: Please use a new comment with just the tag at the beginning*
+  ✅ **AI Conflict Detection Results** ✅  
+  Our AI has analyzed this pull request and found potential **semantic conflicts**.
+
+  ### _What should you do next?_
+  📌 Please review the AI's findings and provide feedback by commenting with:
+  - \`#Confirm\` → If you agree this is a conflict.
+  - \`#NotAConflict\` → If you believe there’s no conflict _(please add a brief explanation)_.
+
+  ✍️ _Tip: Reply with one of the above tags as a separate comment._
   `;
   
   await octokit.rest.issues.createComment({
@@ -109,10 +109,10 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
 
 
 app.webhooks.on('issue_comment.created', async ({ octokit, payload }) => {
-  logger.info(`Received a comment event for PR #${payload.issue.number}`);
+ // logger.info(`Received a comment event for PR #${payload.issue.number}`);
   
   if (payload.comment.user.login.includes('bot') || payload.comment.user.type === 'Bot') {
-    logger.info(`Skipping bot's own comment for PR #${payload.issue.number}`);
+   // logger.info(`Skipping bot's own comment for PR #${payload.issue.number}`);
     return;
   }
   
@@ -128,7 +128,7 @@ app.webhooks.on('issue_comment.created', async ({ octokit, payload }) => {
       let explanation = null;
 
       if (commentBody.startsWith('#Confirm')) {
-        responseMessage = 'The reviewer confirmed that this is a conflict.';
+        responseMessage = `🚨 **AI Conflict Validation Feedback** 🚨\n\nThe reviewer has confirmed that **this is a conflict**. The \`semantic-conflict\` label has been applied.\n\nThank you for your review! ✅`;
         conflictConfirmed = true;
         logger.info(`Confirmed conflict for PR #${prNumber}`);
         
@@ -140,8 +140,7 @@ app.webhooks.on('issue_comment.created', async ({ octokit, payload }) => {
         });
       } else {
         explanation = commentBody.replace('#NotAConflict', '').trim();
-        responseMessage = 'The reviewer did not find a conflict.' + 
-                         (explanation ? ` Reason: ${explanation}` : '');
+        responseMessage = `📝 **AI Conflict Validation Feedback** 📝\n\nThe reviewer has determined that **this is not a conflict**.\n🛠 **Reason:** ${explanation ? explanation : '_No reason provided_'}\n\nThank you for your input! 🙌`;
         logger.info(`Not a conflict for PR #${prNumber}: ${explanation || 'No reason provided'}`);
       }
 
