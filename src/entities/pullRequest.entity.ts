@@ -1,6 +1,7 @@
 import { Entity, Column, OneToMany, ManyToOne, Relation } from 'typeorm';
 import { Review } from './review.entity.ts';
 import { Repo } from './repo.entity.ts';
+import { PRReviewRequest } from './prReviewRequest.entity.ts';
 
 @Entity()
 export class PullRequest {
@@ -52,4 +53,9 @@ export class PullRequest {
 
   @Column({ type: 'float', nullable: true })
   reviewDifficulty!: number;
+
+  @OneToMany(() => PRReviewRequest, (request) => request.pr, {
+    cascade: true,
+  })
+  review_requests!: Relation<PRReviewRequest[]>;
 }

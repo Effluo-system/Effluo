@@ -23,6 +23,13 @@ jobs:
           const reviewers = [${args.reviewers
             .map((reviewer) => `"${reviewer}"`)
             .join(',')}];
+            const prCreator = context.payload.pull_request.user.login;
+
+          // Skip assignment if the PR creator is in the reviewers list
+          if (reviewers.includes(prCreator)) {
+            console.log(\`Skipping reviewer assignment as PR creator (\${prCreator}) is in the reviewers list.\`);
+            return;
+          }
           const labels = context.payload.pull_request.labels.map(label => label.name.toLowerCase());
           if (${args.label
             .map((label) => `labels.includes('${label.toLowerCase()}')`)
