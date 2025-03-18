@@ -372,6 +372,36 @@ app.webhooks.on('pull_request', async ({ octokit, payload }) => {
     `Received a pull request event for #${payload.pull_request.number}`
   );
   try {
+    const owner = payload.repository.owner.login;
+    const repo = payload.repository.name;
+    const PRNumber = payload.pull_request.number;
+
+    // Fetch all comments on the PR
+    const { data: comments } = await octokit.rest.issues.listComments({
+      owner,
+      repo,
+      issue_number: PRNumber,
+    });
+
+    // Identify bot comments containing PR priority details
+    const botComments = comments.filter(
+      (comment) =>
+        comment.user?.type === 'Bot' &&
+        comment.body?.includes('PR Priority:') &&
+        comment.body?.includes('Priority Score:') &&
+        comment.body?.includes('Deployment Note:')
+    );
+
+    // Delete old bot comments
+    for (const comment of botComments) {
+      await octokit.rest.issues.deleteComment({
+        owner,
+        repo,
+        comment_id: comment.id,
+      });
+      logger.info(`Deleted old bot comment: ${comment.id}`);
+    }
+
     await prioritizePullRequest(
       octokit as any,
       payload.repository.owner.login,

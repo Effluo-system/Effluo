@@ -253,33 +253,52 @@ export async function createPriorityComment(
       return false;
     }
     
-    const priorityEmoji = {
-      'critical': '🚨',
-      'high': '🔴',
-      'medium': '🟠',
-      'low': '🟢',
-    }[priority.toLowerCase()] || '⚪';
-    
     // Create more detailed deployment messages based on priority
-    let deploymentMessage = '';
-    switch (priority.toLowerCase()) {
-      case 'critical':
-        deploymentMessage = `Deployment Note: This PR requires IMMEDIATE attention. Consider expediting the review process and deployment to production as soon as possible.`;
-        break;
-      case 'high':
-        deploymentMessage = `Deployment Note: This PR should be prioritized in the current deployment cycle. Please ensure it receives prompt review and testing.`;
-        break;
-      case 'medium':
-        deploymentMessage = `Deployment Note: Standard priority - include in the regular deployment schedule with normal review and testing procedures.`;
-        break;
-      case 'low':
-        deploymentMessage = `Deployment Note: Non-urgent changes - can be included in a future deployment cycle if the current one is already packed.`;
-        break;
-      default:
-        deploymentMessage = `Deployment Note: Priority level unclear - please review to determine appropriate deployment timing.`;
-    }
-    
-    const commentBody = `
+let deploymentMessage = '';
+let priority = '';
+
+// Determine priority based on score
+if (score >= 70) {
+  priority = 'high';
+} else if (score >= 40) {
+  priority = 'medium';
+} else {
+  priority = 'low';
+}
+
+// Set emoji based on priority
+let priorityEmoji = '';
+switch (priority) {
+  case 'high':
+    priorityEmoji = '🔴';
+    break;
+  case 'medium':
+    priorityEmoji = '🟠';;
+    break;
+  case 'low':
+    priorityEmoji = '🟢';
+    break;
+  default:
+    priorityEmoji = '❓';
+}
+
+// Create appropriate deployment message
+switch (priority.toLowerCase()) {
+  case 'high':
+    deploymentMessage = `Deployment Note: This PR should be prioritized in the current deployment cycle. Please ensure it receives prompt review and testing.`;
+    break;
+  case 'medium':
+    deploymentMessage = `Deployment Note: Standard priority - include in the regular deployment schedule with normal review and testing procedures.`;
+    break;
+  case 'low':
+    deploymentMessage = `Deployment Note: Non-urgent changes - can be included in a future deployment cycle if the current one is already packed.`;
+    break;
+  default:
+    deploymentMessage = `Deployment Note: Priority level unclear - please review to determine appropriate deployment timing.`;
+}
+
+// Construct the complete comment body
+const commentBody = `
 ${priorityEmoji} PR Priority: ${priority.toUpperCase()}
 
 Priority Score: ${score}/100

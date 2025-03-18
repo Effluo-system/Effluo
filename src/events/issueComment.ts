@@ -1,4 +1,5 @@
 import { app } from '../config/appConfig.ts';
+import { prioritizePullRequest } from '../functions/pr-prioritization/pr-prioritization.ts';
 import {
   checkForCommitResolutionCommands,
   resolveAllConflicts,
@@ -14,6 +15,10 @@ app.webhooks.on(['issue_comment.created'], async ({ octokit, payload }) => {
   }
 
   try {
+    // Avoid processing comments from the bot itself
+  if (payload.comment.user?.type === 'Bot') {
+    return;
+  }
     // Check for commit resolution commands
     const { applyAll, commentId, user, commandTimestamp } =
       await checkForCommitResolutionCommands(
@@ -68,6 +73,46 @@ app.webhooks.on(['issue_comment.created'], async ({ octokit, payload }) => {
         }
       }
     }
+
+    logger.info(`Processing comment webhook for PR: ${payload.issue.number}`);
+
+    const owner = payload.repository.owner.login;
+    const repo = payload.repository.name;
+    const issueNumber = payload.issue.number;
+
+    // Fetch all comments on the PR
+    const { data: comments } = await octokit.rest.issues.listComments({
+      owner,
+      repo,
+      issue_number: issueNumber,
+    });
+
+    // Identify bot comments containing PR priority details
+    const botComments = comments.filter(
+      (comment) =>
+        comment.user?.type === 'Bot' &&
+        comment.body?.includes('PR Priority:') &&
+        comment.body?.includes('Priority Score:') &&
+        comment.body?.includes('Deployment Note:')
+    );
+
+    // Delete old bot comments
+    for (const comment of botComments) {
+      await octokit.rest.issues.deleteComment({
+        owner,
+        repo,
+        comment_id: comment.id,
+      });
+      logger.info(`Deleted old bot comment: ${comment.id}`);
+    }
+
+
+    await prioritizePullRequest(
+        octokit as any,
+        payload.repository.owner.login,
+        payload.repository.name,
+        payload.issue.number
+      );
   } catch (error) {
     logger.error(`Error processing comment webhook: ${error}`);
   }
