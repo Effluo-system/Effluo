@@ -5,6 +5,7 @@ import {
   getResolution,
 } from '../functions/textual-merge-conflict-resolution/textualMergeConflictResolution.ts';
 import { calculateReviewDifficultyOfPR } from '../functions/workload-calculation/workloadCalculation.ts';
+import { PRReviewRequestService } from '../services/prReviewRequest.service.ts';
 import { PullRequestService } from '../services/pullRequest.service.ts';
 import type { CustomError } from '../types/common.d.ts';
 import { checkForMergeConflicts } from '../utils/checkForMergeConflicts.ts';
@@ -15,7 +16,7 @@ app.webhooks.on(
   ['pull_request.opened', 'pull_request.synchronize', 'pull_request.reopened'],
   async ({ octokit, payload }) => {
     logger.info(
-      `Received a synchronize event for #${payload.pull_request.number}`
+      `Starting merge conflict resolution flow for #${payload.pull_request.number}`
     );
     try {
       let pr = await PullRequestService.getPullRequestById(
@@ -66,13 +67,6 @@ app.webhooks.on(
           labels: ['Merge Conflict'],
         });
 
-        // await octokit.rest.issues.createComment({
-        //   owner: payload.repository.owner.login,
-        //   repo: payload.repository.name,
-        //   issue_number: payload.pull_request.number,
-        //   body: 'This PR has a merge conflict. Please resolve the conflict and push the changes.❌',
-        // });
-
         const resolution = await getResolution(
           octokit as any,
           payload.repository.owner.login,
@@ -112,13 +106,6 @@ app.webhooks.on(
             issue_number: payload.pull_request.number,
             name: 'Merge Conflict',
           });
-
-          // await octokit.rest.issues.createComment({
-          //   owner: payload.repository.owner.login,
-          //   repo: payload.repository.name,
-          //   issue_number: payload.pull_request.number,
-          //   body: 'The merge conflict has been resolved. This PR is now ready to be merged.✔️',
-          // });
         }
       }
     } catch (error) {
@@ -173,13 +160,6 @@ app.webhooks.on('push', async ({ octokit, payload }) => {
           labels: ['Merge Conflict'],
         });
 
-        // await octokit.rest.issues.createComment({
-        //   owner: payload.repository.owner.login,
-        //   repo: payload.repository.name,
-        //   issue_number: pr.number,
-        //   body: 'This PR has a merge conflict due to recent changes in the base branch. Please resolve the conflict and push the changes.❌',
-        // });
-
         const resolution = await getResolution(
           octokit as any,
           payload.repository.owner.login,
@@ -217,13 +197,6 @@ app.webhooks.on('push', async ({ octokit, payload }) => {
           issue_number: pr.number,
           name: 'Merge Conflict',
         });
-
-        // await octokit.rest.issues.createComment({
-        //   owner: payload.repository.owner.login,
-        //   repo: payload.repository.name,
-        //   issue_number: pr.number,
-        //   body: 'The merge conflict has been resolved. This PR is now ready to be merged.✔️',
-        // });
       }
     } catch (error) {
       const customError = error as CustomError;
@@ -234,6 +207,50 @@ app.webhooks.on('push', async ({ octokit, payload }) => {
       } else {
         logger.error(`Error processing PR #${pr.number}: ${error}`);
       }
+    }
+  }
+});
+
+app.webhooks.on('pull_request.synchronize', async ({ octokit, payload }) => {
+  try {
+    const files = await analyzePullRequest(
+      octokit,
+      payload.repository.owner.login,
+      payload.repository.name,
+      payload.pull_request.number,
+      payload.pull_request.base.ref,
+      payload.pull_request.head.ref
+    );
+
+    const reviewDifficulty = await calculateReviewDifficultyOfPR(files);
+
+    const prPromise = PullRequestService.getPullRequestById(
+      payload?.pull_request?.id?.toString()
+    );
+    const reviewRequestPromise = PRReviewRequestService.findByPRId(
+      payload?.pull_request?.id?.toString()
+    );
+    const [pr, reviewRequest] = await Promise.all([
+      prPromise,
+      reviewRequestPromise,
+    ]);
+
+    if (pr) {
+      pr.reviewDifficulty = reviewDifficulty;
+      await PullRequestService.updatePullRequest(pr);
+    }
+    if (reviewRequest) {
+      reviewRequest.weight = reviewDifficulty;
+      await PRReviewRequestService.updatePRReviewRequest(reviewRequest);
+    }
+  } catch (error) {
+    const customError = error as CustomError;
+    if (customError.response) {
+      logger.error(
+        `Error updating the review difficulty` + customError.message
+      );
+    } else {
+      logger.error(`Error updating the review difficulty` + error);
     }
   }
 });

@@ -14,6 +14,11 @@ app.webhooks.on(['issue_comment.created'], async ({ octokit, payload }) => {
     return;
   }
 
+  // Avoid processing comments from the bot itself
+  if (payload.comment.user?.type === 'Bot') {
+    return;
+  }
+
   try {
     // Avoid processing comments from the bot itself
   if (payload.comment.user?.type === 'Bot') {
