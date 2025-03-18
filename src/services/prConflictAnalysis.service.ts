@@ -11,14 +11,28 @@ export class PrConflictAnalysisService {
     conflictsDetected: boolean,
     validationFormPosted: boolean
   ): Promise<PrConflictAnalysis> {
-    const analysis = new PrConflictAnalysis();
-    analysis.pr_number = prNumber;
-    analysis.repository_owner = repositoryOwner;
-    analysis.repository_name = repositoryName;
-    analysis.conflicts_detected = conflictsDetected;
-    analysis.validation_form_posted = validationFormPosted;
+    const existingAnalysis = await this.repository.findOne({
+      where: {
+        pr_number: prNumber,
+        repository_owner: repositoryOwner,
+        repository_name: repositoryName,
+      },
+    });
 
-    return await this.repository.save(analysis);
+    if (existingAnalysis) {
+      existingAnalysis.conflicts_detected = conflictsDetected;
+      existingAnalysis.validation_form_posted = validationFormPosted;
+      existingAnalysis.analyzed_at = new Date(); 
+      return await this.repository.save(existingAnalysis);
+    } else {
+      const analysis = new PrConflictAnalysis();
+      analysis.pr_number = prNumber;
+      analysis.repository_owner = repositoryOwner;
+      analysis.repository_name = repositoryName;
+      analysis.conflicts_detected = conflictsDetected;
+      analysis.validation_form_posted = validationFormPosted;
+      return await this.repository.save(analysis);
+    }
   }
 
   static async wasAnalyzedWithValidationForm(
@@ -31,59 +45,29 @@ export class PrConflictAnalysisService {
         pr_number: prNumber,
         repository_owner: repositoryOwner,
         repository_name: repositoryName,
-        validation_form_posted: true
-      }
+        validation_form_posted: true,
+      },
     });
 
     return !!analysis;
   }
 
-  static async findLatestAnalysisForPR(
+  static async resetValidationFormPosted(
     prNumber: number,
     repositoryOwner: string,
     repositoryName: string
-  ): Promise<PrConflictAnalysis | null> {
-    return await this.repository.findOne({
+  ): Promise<void> {
+    const existingAnalysis = await this.repository.findOne({
       where: {
         pr_number: prNumber,
         repository_owner: repositoryOwner,
-        repository_name: repositoryName
+        repository_name: repositoryName,
       },
-      order: { analyzed_at: 'DESC' }
     });
-  }
-  
-  static async getPRValidationStatus(
-    prNumber: number,
-    repositoryOwner: string,
-    repositoryName: string,
-    prUpdatedAt: Date
-  ): Promise<{
-    shouldAnalyze: boolean;
-    hasValidationForm: boolean;
-  }> {
-    const latestAnalysis = await this.findLatestAnalysisForPR(
-      prNumber, 
-      repositoryOwner, 
-      repositoryName
-    );
-    
-    if (!latestAnalysis) {
-      return { shouldAnalyze: true, hasValidationForm: false };
+
+    if (existingAnalysis) {
+      existingAnalysis.validation_form_posted = false;
+      await this.repository.save(existingAnalysis);
     }
-    
-    // Check if the analysis was performed after the PR was last updated
-    const analysisDate = new Date(latestAnalysis.analyzed_at);
-    const prUpdateDate = new Date(prUpdatedAt);
-    
-    if (analysisDate < prUpdateDate) {
-      // PR was updated after the last analysis, should analyze again
-      return { shouldAnalyze: true, hasValidationForm: false };
-    }
-    
-    return { 
-      shouldAnalyze: false, 
-      hasValidationForm: latestAnalysis.validation_form_posted 
-    };
   }
 }
