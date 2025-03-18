@@ -14,6 +14,7 @@ import { AppDataSource } from '../server/server.ts';
 import { PrFeedback } from '../entities/prFeedback.entity.ts';
 import { prioritizePullRequest } from '../functions/pr-prioritization/pr-prioritization.ts';
 import { PRReviewRequestService } from '../services/prReviewRequest.service.ts';
+import { PrConflictAnalysisService } from '../services/prConflictAnalysis.service.ts';
 
 const postAIValidationForm = async (
   octokit: any,
@@ -39,6 +40,15 @@ const postAIValidationForm = async (
     issue_number: issueNumber,
     body: validationMessage,
   });
+
+  // Track that we've posted the validation form for this PR
+  await PrConflictAnalysisService.trackAnalysis(
+    issueNumber,
+    owner,
+    repo,
+    true, // conflicts detected
+    true  // validation form posted
+  );
 };
 
 const logConflictFeedback = async (
@@ -58,6 +68,41 @@ const logConflictFeedback = async (
     logger.info('Feedback saved successfully');
   } catch (error) {
     logger.error('Error saving feedback:', error);
+  }
+};
+
+// Helper function to handle conflict analysis and posting
+const handleConflictAnalysis = async (
+  octokit: any,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  conflictAnalysis: string
+) => {
+  if (conflictAnalysis.includes("Conflicts Detected")) {
+    await octokit.rest.issues.createComment({
+      owner: owner,
+      repo: repo,
+      issue_number: prNumber,
+      body: conflictAnalysis,
+    });
+
+    await postAIValidationForm(
+      octokit,
+      owner,
+      repo,
+      prNumber
+    );
+  } else {
+    logger.info(`No semantic conflicts detected for PR #${prNumber}`);
+    // Still track that we analyzed this PR, but no conflicts found
+    await PrConflictAnalysisService.trackAnalysis(
+      prNumber,
+      owner,
+      repo,
+      false, // no conflicts detected
+      false  // no validation form posted
+    );
   }
 };
 
@@ -87,23 +132,13 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
     const conflictAnalysis = await analyzeConflicts(files2);
     const reviewDifficulty = await calculateReviewDifficultyOfPR(files1);
 
-    if (conflictAnalysis.includes("Conflicts Detected")) {
-      await octokit.rest.issues.createComment({
-        owner: payload.repository.owner.login,
-        repo: payload.repository.name,
-        issue_number: payload.pull_request.number,
-        body: conflictAnalysis,
-      });
-
-      await postAIValidationForm(
-        octokit,
-        payload.repository.owner.login,
-        payload.repository.name,
-        payload.pull_request.number
-      );
-    } else {
-      logger.info(`No semantic conflicts detected for PR #${payload.pull_request.number}`);
-    }
+    await handleConflictAnalysis(
+      octokit,
+      payload.repository.owner.login,
+      payload.repository.name,
+      payload.pull_request.number,
+      conflictAnalysis
+    );
 
     await PullRequestService.initiatePullRequestCreationFlow(
       payload,
@@ -135,6 +170,21 @@ app.webhooks.on('issue_comment.created', async ({ octokit, payload }) => {
     try {
       const { issue, comment } = payload;
       const prNumber = issue.number;
+      const owner = payload.repository.owner.login;
+      const repo = payload.repository.name;
+
+      // Check if this PR was previously analyzed and had a validation form posted
+      const wasAnalyzedWithValidationForm = await PrConflictAnalysisService.wasAnalyzedWithValidationForm(
+        prNumber,
+        owner,
+        repo
+      );
+
+      if (!wasAnalyzedWithValidationForm) {
+        logger.info(`Ignoring comment for PR #${prNumber} as it wasn't analyzed for conflicts or didn't have a validation form posted`);
+        return;
+      }
+
       let responseMessage = '';
       let conflictConfirmed = false;
       let explanation = null;
@@ -145,8 +195,8 @@ app.webhooks.on('issue_comment.created', async ({ octokit, payload }) => {
         logger.info(`Confirmed conflict for PR #${prNumber}`);
 
         await octokit.rest.issues.addLabels({
-          owner: payload.repository.owner.login,
-          repo: payload.repository.name,
+          owner: owner,
+          repo: repo,
           issue_number: prNumber,
           labels: ['semantic-conflict'],
         });
@@ -157,8 +207,8 @@ app.webhooks.on('issue_comment.created', async ({ octokit, payload }) => {
       }
 
       await octokit.rest.issues.createComment({
-        owner: payload.repository.owner.login,
-        repo: payload.repository.name,
+        owner: owner,
+        repo: repo,
         issue_number: prNumber,
         body: responseMessage,
       });
@@ -216,23 +266,13 @@ app.webhooks.on('pull_request.reopened', async ({ octokit, payload }) => {
       await PullRequestService.updatePullRequest(pr);
     }
 
-    if (conflictAnalysis.includes("Conflicts Detected")) {
-      await octokit.rest.issues.createComment({
-        owner: payload.repository.owner.login,
-        repo: payload.repository.name,
-        issue_number: payload.pull_request.number,
-        body: conflictAnalysis,
-      });
-
-      await postAIValidationForm(
-        octokit,
-        payload.repository.owner.login,
-        payload.repository.name,
-        payload.pull_request.number
-      );
-    } else {
-      logger.info(`No semantic conflicts detected for reopened PR #${payload.pull_request.number}`);
-    }
+    await handleConflictAnalysis(
+      octokit,
+      payload.repository.owner.login,
+      payload.repository.name,
+      payload.pull_request.number,
+      conflictAnalysis
+    );
   } catch (error) {
     const customError = error as CustomError;
     if (customError.response) {
@@ -245,6 +285,7 @@ app.webhooks.on('pull_request.reopened', async ({ octokit, payload }) => {
   }
 });
 
+// Rest of your code remains the same
 app.webhooks.on(
   ['pull_request.labeled', `pull_request.unlabeled`],
   async ({ octokit, payload }) => {

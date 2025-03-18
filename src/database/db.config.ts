@@ -10,6 +10,7 @@ import { UserReviewSummary } from '../entities/userReviewSummary.entity.ts';
 import createIssueTableMigration from './migrations/create-issue-table.migration.ts';
 import { PRReviewRequest } from '../entities/prReviewRequest.entity.ts';
 import { PrFeedback } from '../entities/prFeedback.entity.ts';
+import {PrConflictAnalysis} from '../entities/prConflictAnalysis.entity.ts'
 
 dotenv.config();
 
@@ -33,6 +34,7 @@ const dbConfig: DataSourceOptions = {
     PRReviewRequest,
     PrFeedback,
     MergeResolution,
+    PrConflictAnalysis
   ],
 };
 
