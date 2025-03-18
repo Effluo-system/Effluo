@@ -16,7 +16,7 @@ app.webhooks.on(
   ['pull_request.opened', 'pull_request.synchronize', 'pull_request.reopened'],
   async ({ octokit, payload }) => {
     logger.info(
-      `Received a synchronize event for #${payload.pull_request.number}`
+      `Starting merge conflict resolution flow for #${payload.pull_request.number}`
     );
     try {
       let pr = await PullRequestService.getPullRequestById(
@@ -67,13 +67,6 @@ app.webhooks.on(
           labels: ['Merge Conflict'],
         });
 
-        // await octokit.rest.issues.createComment({
-        //   owner: payload.repository.owner.login,
-        //   repo: payload.repository.name,
-        //   issue_number: payload.pull_request.number,
-        //   body: 'This PR has a merge conflict. Please resolve the conflict and push the changes.❌',
-        // });
-
         const resolution = await getResolution(
           octokit as any,
           payload.repository.owner.login,
@@ -113,13 +106,6 @@ app.webhooks.on(
             issue_number: payload.pull_request.number,
             name: 'Merge Conflict',
           });
-
-          // await octokit.rest.issues.createComment({
-          //   owner: payload.repository.owner.login,
-          //   repo: payload.repository.name,
-          //   issue_number: payload.pull_request.number,
-          //   body: 'The merge conflict has been resolved. This PR is now ready to be merged.✔️',
-          // });
         }
       }
     } catch (error) {
@@ -174,13 +160,6 @@ app.webhooks.on('push', async ({ octokit, payload }) => {
           labels: ['Merge Conflict'],
         });
 
-        // await octokit.rest.issues.createComment({
-        //   owner: payload.repository.owner.login,
-        //   repo: payload.repository.name,
-        //   issue_number: pr.number,
-        //   body: 'This PR has a merge conflict due to recent changes in the base branch. Please resolve the conflict and push the changes.❌',
-        // });
-
         const resolution = await getResolution(
           octokit as any,
           payload.repository.owner.login,
@@ -218,13 +197,6 @@ app.webhooks.on('push', async ({ octokit, payload }) => {
           issue_number: pr.number,
           name: 'Merge Conflict',
         });
-
-        // await octokit.rest.issues.createComment({
-        //   owner: payload.repository.owner.login,
-        //   repo: payload.repository.name,
-        //   issue_number: pr.number,
-        //   body: 'The merge conflict has been resolved. This PR is now ready to be merged.✔️',
-        // });
       }
     } catch (error) {
       const customError = error as CustomError;

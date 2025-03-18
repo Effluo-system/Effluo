@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { app as octokitApp } from './config/appConfig.ts';
 import './events/issue.ts';
 import './events/issueComment.ts';

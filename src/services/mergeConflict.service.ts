@@ -1,4 +1,5 @@
 import { MergeResolution } from '../entities/mergeResolution.entity.ts';
+import { PullRequest } from '../entities/pullRequest.entity.ts';
 import { AppDataSource } from '../server/server.ts';
 import { ResolutionData } from '../types/mergeConflicts';
 import { logger } from '../utils/logger.ts';
@@ -6,6 +7,8 @@ import { logger } from '../utils/logger.ts';
 export class MergeConflictService {
   private static mergeResolutionRepository =
     AppDataSource.getRepository(MergeResolution);
+  private static pullRequestRepository =
+    AppDataSource.getRepository(PullRequest);
 
   public static async saveMergeResolution(
     resolution: MergeResolution
@@ -23,7 +26,7 @@ export class MergeConflictService {
     try {
       return this.mergeResolutionRepository.findOne({
         where: { id },
-        relations: ['repo'],
+        relations: ['repo', 'pullRequest'],
       });
     } catch (error) {
       throw new Error(`Error getting merge resolution from db: ${error}`);
@@ -36,13 +39,14 @@ export class MergeConflictService {
     filename: string
   ): Promise<MergeResolution | null> {
     try {
+      // We still support filtering by PR number for compatibility
       return this.mergeResolutionRepository.findOne({
         where: {
           repo: { id: repoId },
-          pullRequestNumber,
+          pullRequest: { number: pullRequestNumber },
           filename,
         },
-        relations: ['repo'],
+        relations: ['repo', 'pullRequest'],
       });
     } catch (error) {
       throw new Error(
@@ -59,55 +63,14 @@ export class MergeConflictService {
       return this.mergeResolutionRepository.find({
         where: {
           repo: { id: repoId },
-          pullRequestNumber,
+          pullRequest: { number: pullRequestNumber },
         },
-        relations: ['repo'],
+        relations: ['repo', 'pullRequest'],
       });
     } catch (error) {
       throw new Error(
         `Error getting merge resolutions for PR #${pullRequestNumber}: ${error}`
       );
-    }
-  }
-
-  public static async confirmResolution(id: number): Promise<MergeResolution> {
-    try {
-      const resolution = await this.getResolutionById(id);
-      if (!resolution) {
-        throw new Error(`Resolution with ID ${id} not found`);
-      }
-
-      resolution.confirmed = true;
-      return this.mergeResolutionRepository.save(resolution);
-    } catch (error) {
-      throw new Error(`Error confirming merge resolution: ${error}`);
-    }
-  }
-
-  public static async confirmResolutionByPRAndFilename(
-    repoId: string,
-    pullRequestNumber: number,
-    filename: string
-  ): Promise<MergeResolution | null> {
-    try {
-      const resolution = await this.getResolutionByPRAndFilename(
-        repoId,
-        pullRequestNumber,
-        filename
-      );
-
-      if (!resolution) {
-        logger.error(
-          `Resolution not found for PR #${pullRequestNumber} and file ${filename}`
-        );
-        return null;
-      }
-
-      resolution.confirmed = true;
-      return this.mergeResolutionRepository.save(resolution);
-    } catch (error) {
-      logger.error(`Error confirming resolution: ${error}`);
-      return null;
     }
   }
 
@@ -192,10 +155,24 @@ export class MergeConflictService {
     resolutions: ResolutionData[]
   ): Promise<void> {
     try {
+      // First, find the PullRequest entity
+      const pullRequest = await this.pullRequestRepository.findOne({
+        where: {
+          repository: { id: repoId },
+          number: pullNumber,
+        },
+      });
+
+      if (!pullRequest) {
+        throw new Error(
+          `Pull request #${pullNumber} not found for repo ${repoId}`
+        );
+      }
+
       for (const resolution of resolutions) {
         const mergeResolution = new MergeResolution();
         mergeResolution.repo = { id: repoId } as any;
-        mergeResolution.pullRequestNumber = pullNumber;
+        mergeResolution.pullRequest = pullRequest;
         mergeResolution.filename = resolution.filename;
         mergeResolution.resolvedCode = resolution.resolvedCode;
         mergeResolution.confirmed = false;
@@ -246,12 +223,12 @@ export class MergeConflictService {
       return this.mergeResolutionRepository.findOne({
         where: {
           repo: { id: repoId },
-          pullRequestNumber,
+          pullRequest: { number: pullRequestNumber },
         },
         order: {
           lastProcessedTimestamp: 'DESC',
         },
-        relations: ['repo'],
+        relations: ['repo', 'pullRequest'],
       });
     } catch (error) {
       logger.error(`Error getting latest processed resolution: ${error}`);
@@ -292,6 +269,96 @@ export class MergeConflictService {
     } catch (error) {
       logger.error(`Error updating last processed timestamp: ${error}`);
       return false;
+    }
+  }
+
+  public static async createMergeResolution(
+    repoId: string,
+    pullRequest: PullRequest,
+    filename: string,
+    resolvedCode: string,
+    baseContent?: string,
+    oursContent?: string,
+    theirsContent?: string,
+    lastProcessedTimestamp?: string,
+    oursBranch?: string,
+    theirsBranch?: string,
+    commentId?: number
+  ): Promise<MergeResolution> {
+    try {
+      const newResolution = new MergeResolution();
+      newResolution.repo = { id: repoId } as any;
+      newResolution.pullRequest = pullRequest;
+      newResolution.filename = filename;
+      newResolution.resolvedCode = resolvedCode;
+      newResolution.baseContent = baseContent;
+      newResolution.oursContent = oursContent;
+      newResolution.theirsContent = theirsContent;
+      newResolution.confirmed = false;
+      newResolution.applied = false;
+      newResolution.lastProcessedTimestamp =
+        lastProcessedTimestamp || new Date().toISOString();
+
+      if (oursBranch) {
+        newResolution.oursBranch = oursBranch;
+      }
+
+      if (theirsBranch) {
+        newResolution.theirsBranch = theirsBranch;
+      }
+
+      if (commentId) {
+        newResolution.commentId = commentId;
+      }
+
+      return await this.saveMergeResolution(newResolution);
+    } catch (error) {
+      logger.error(
+        `Failed to create merge resolution for ${filename}: ${error}`
+      );
+      throw new Error(`Error creating merge resolution: ${error}`);
+    }
+  }
+
+  public static async updateMergeResolution(
+    existingResolution: MergeResolution,
+    resolvedCode: string,
+    baseContent?: string,
+    oursContent?: string,
+    theirsContent?: string,
+    lastProcessedTimestamp?: string,
+    oursBranch?: string,
+    theirsBranch?: string,
+    commentId?: number
+  ): Promise<MergeResolution> {
+    try {
+      existingResolution.resolvedCode = resolvedCode;
+      existingResolution.baseContent = baseContent;
+      existingResolution.oursContent = oursContent;
+      existingResolution.theirsContent = theirsContent;
+      existingResolution.confirmed = false;
+      existingResolution.applied = false;
+      existingResolution.lastProcessedTimestamp =
+        lastProcessedTimestamp || new Date().toISOString();
+
+      if (oursBranch) {
+        existingResolution.oursBranch = oursBranch;
+      }
+
+      if (theirsBranch) {
+        existingResolution.theirsBranch = theirsBranch;
+      }
+
+      if (commentId && !existingResolution.commentId) {
+        existingResolution.commentId = commentId;
+      }
+
+      return await this.saveMergeResolution(existingResolution);
+    } catch (error) {
+      logger.error(
+        `Failed to update merge resolution for ${existingResolution.filename}: ${error}`
+      );
+      throw new Error(`Error updating merge resolution: ${error}`);
     }
   }
 }
