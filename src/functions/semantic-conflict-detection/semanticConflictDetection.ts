@@ -44,14 +44,22 @@ export async function fetchFileContent(
 }
 
 export function getReferencedFiles(fileContent: string): string[] {
-  const dependencyRegex = /import\s+.*\s+from\s+['"](.*)['"]/g;
-  const matches: string[] = [];
-  let match;
-  while ((match = dependencyRegex.exec(fileContent)) !== null) {
-    matches.push(match[1]);
+  const importRegex = /import\s+.*\s+from\s+['"](.*)['"]/g;
+
+  const uncommentedImports = fileContent
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '')  
+    .match(importRegex);
+
+  if (!uncommentedImports) {
+    return [];
   }
-  return matches;
+
+  return uncommentedImports.map((importStatement) => {
+    const match = importStatement.match(/from\s+['"](.*)['"]/);
+    return match ? match[1] : '';
+  });
 }
+
 
 export async function fetchReferencedFiles(
   octokit: any,

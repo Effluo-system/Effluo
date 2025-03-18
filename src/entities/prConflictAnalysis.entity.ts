@@ -5,19 +5,19 @@ export class PrConflictAnalysis {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column()
+  @Column('int')  
   pr_number!: number;
 
-  @Column()
+  @Column('varchar', { length: 255 })
   repository_name!: string;
 
-  @Column()
+  @Column('varchar', { length: 255 }) 
   repository_owner!: string;
 
-  @Column({ default: false })
+  @Column('boolean', { default: false }) 
   conflicts_detected!: boolean;
 
-  @Column({ default: false })
+  @Column('boolean', { default: false })  
   validation_form_posted!: boolean;
 
   @CreateDateColumn()
