@@ -10,9 +10,9 @@ import {
 } from '../functions/semantic-conflict-detection/semanticConflictDetection.ts';
 import { calculateReviewDifficultyOfPR } from '../functions/workload-calculation/workloadCalculation.ts';
 import { PullRequest } from '../entities/pullRequest.entity.ts';
-import { AppDataSource } from '../server/server.ts';  
-import { PrFeedback } from '../entities/prFeedback.entity.ts';  
-import { prioritizePullRequest} from '../functions/pr-prioritization/pr-prioritization.ts';
+import { AppDataSource } from '../server/server.ts';
+import { PrFeedback } from '../entities/prFeedback.entity.ts';
+import { prioritizePullRequest } from '../functions/pr-prioritization/pr-prioritization.ts';
 import { PRReviewRequestService } from '../services/prReviewRequest.service.ts';
 
 const messageForNewPRs = fs.readFileSync('./src/messages/message.md', 'utf8');
@@ -72,12 +72,12 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
     `Received a pull request event for #${payload.pull_request.number}`
   );
   try {
-    await octokit.rest.issues.createComment({
-      owner: payload.repository.owner.login,
-      repo: payload.repository.name,
-      issue_number: payload.pull_request.number,
-      body: messageForNewPRs,
-    });
+    // await octokit.rest.issues.createComment({
+    //   owner: payload.repository.owner.login,
+    //   repo: payload.repository.name,
+    //   issue_number: payload.pull_request.number,
+    //   body: messageForNewPRs,
+    // });
 
     const files1 = await analyzePullRequest(
       octokit,
@@ -131,10 +131,13 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
 });
 
 app.webhooks.on('issue_comment.created', async ({ octokit, payload }) => {
- // logger.info(`Received a comment event for PR #${payload.issue.number}`);
-  
-  if (payload.comment.user.login.includes('bot') || payload.comment.user.type === 'Bot') {
-   // logger.info(`Skipping bot's own comment for PR #${payload.issue.number}`);
+  // logger.info(`Received a comment event for PR #${payload.issue.number}`);
+
+  if (
+    payload.comment.user.login.includes('bot') ||
+    payload.comment.user.type === 'Bot'
+  ) {
+    // logger.info(`Skipping bot's own comment for PR #${payload.issue.number}`);
     return;
   }
 
@@ -165,8 +168,14 @@ app.webhooks.on('issue_comment.created', async ({ octokit, payload }) => {
         });
       } else {
         explanation = commentBody.replace('#NotAConflict', '').trim();
-        responseMessage = `📝 **AI Conflict Validation Feedback** 📝\n\nThe reviewer has determined that **this is not a conflict**.\n🛠 **Reason:** ${explanation ? explanation : '_No reason provided_'}\n\nThank you for your input! 🙌`;
-        logger.info(`Not a conflict for PR #${prNumber}: ${explanation || 'No reason provided'}`);
+        responseMessage = `📝 **AI Conflict Validation Feedback** 📝\n\nThe reviewer has determined that **this is not a conflict**.\n🛠 **Reason:** ${
+          explanation ? explanation : '_No reason provided_'
+        }\n\nThank you for your input! 🙌`;
+        logger.info(
+          `Not a conflict for PR #${prNumber}: ${
+            explanation || 'No reason provided'
+          }`
+        );
       }
 
       await octokit.rest.issues.createComment({
@@ -233,13 +242,6 @@ app.webhooks.on('pull_request.reopened', async ({ octokit, payload }) => {
       await PullRequestService.updatePullRequest(pr);
     }
 
-    await octokit.rest.issues.createComment({
-      owner: payload.repository.owner.login,
-      repo: payload.repository.name,
-      issue_number: payload.pull_request.number,
-      body: conflictAnalysis,
-    });
-
     await postAIValidationForm(
       octokit,
       payload.repository.owner.login,
@@ -265,13 +267,6 @@ app.webhooks.on(
     try {
       if (!payload.sender.login.includes('bot')) {
         logger.info(`Received a label event for #${payload?.label?.name}`);
-
-        await octokit.rest.issues.createComment({
-          owner: payload.repository.owner.login,
-          repo: payload.repository.name,
-          issue_number: payload.pull_request.number,
-          body: messageForNewLabel,
-        });
 
         let pr = await PullRequestService.getPullRequestById(
           payload?.pull_request?.id.toString()
@@ -369,8 +364,7 @@ app.webhooks.on('pull_request', async ({ octokit, payload }) => {
       payload.repository.name,
       payload.pull_request.number
     );
-  }
-  catch (error) {
+  } catch (error) {
     const customError = error as CustomError;
     if (customError.response) {
       logger.error(

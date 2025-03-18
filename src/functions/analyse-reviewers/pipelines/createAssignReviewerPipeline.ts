@@ -98,5 +98,6 @@ export const pushWorkflowFilesToGithub = async (
     logger.info('Workflows pushed successfully');
   } catch (error) {
     logger.error(error);
+    throw new Error('Failed to push workflows');
   }
 };
