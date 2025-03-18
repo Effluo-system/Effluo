@@ -15,12 +15,6 @@ import { PrFeedback } from '../entities/prFeedback.entity.ts';
 import { prioritizePullRequest } from '../functions/pr-prioritization/pr-prioritization.ts';
 import { PRReviewRequestService } from '../services/prReviewRequest.service.ts';
 
-const messageForNewPRs = fs.readFileSync('./src/messages/message.md', 'utf8');
-const messageForNewLabel = fs.readFileSync(
-  './src/messages/messageNewLabel.md',
-  'utf8'
-);
-
 const postAIValidationForm = async (
   octokit: any,
   owner: string,
@@ -72,13 +66,6 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
     `Received a pull request event for #${payload.pull_request.number}`
   );
   try {
-    // await octokit.rest.issues.createComment({
-    //   owner: payload.repository.owner.login,
-    //   repo: payload.repository.name,
-    //   issue_number: payload.pull_request.number,
-    //   body: messageForNewPRs,
-    // });
-
     const files1 = await analyzePullRequest(
       octokit,
       payload.repository.owner.login,
