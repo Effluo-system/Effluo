@@ -1,9 +1,9 @@
 import { Octokit } from '@octokit/rest';
 import diff3 from 'diff3';
 import { Base64 } from 'js-base64';
-import { MergeResolution } from '../../entities/mergeResolution.entity.ts';
 import { MergeConflictService } from '../../services/mergeConflict.service.ts';
 import { OwnerService } from '../../services/owner.service.ts';
+import { PullRequestService } from '../../services/pullRequest.service.ts';
 import { RepoService } from '../../services/repo.service.ts';
 import { ConflictData, ResolutionData } from '../../types/mergeConflicts';
 import { extractConflictedFiles } from '../../utils/detectConflictedFiles.ts';
@@ -45,6 +45,14 @@ export async function getResolution(
       pull_number: pullNumber,
     });
 
+    // Get the latest commit SHA of the target branch
+    const { data: targetBranchRef } = await octokit.rest.git.getRef({
+      owner,
+      repo,
+      ref: `heads/${pr.base.ref}`, // Use the branch name to get the latest ref
+    });
+    const latestTargetSha = targetBranchRef.object.sha;
+
     const conflictingFilenames = await extractConflictedFiles(
       octokit,
       owner,
@@ -62,21 +70,21 @@ export async function getResolution(
     // Gather conflict data for all files
     for (const filename of conflictingFilenames) {
       try {
-        // Get common ancestor commit (merge base)
+        // Get common ancestor commit (merge base) using the latest target branch SHA
         const { data: compareData } = await octokit.rest.repos.compareCommits({
           owner,
           repo,
-          base: pr.base.sha,
+          base: latestTargetSha,
           head: pr.head.sha,
         });
 
         const mergeBase = compareData.merge_base_commit.sha;
 
-        // Get all three versions of the file
+        // Get all three versions of the file using the latest target branch SHA
         const [baseContent, oursContent, theirsContent] = await Promise.all([
           getFileContent(octokit, owner, repo, filename, mergeBase),
           getFileContent(octokit, owner, repo, filename, pr.head.sha),
-          getFileContent(octokit, owner, repo, filename, pr.base.sha),
+          getFileContent(octokit, owner, repo, filename, latestTargetSha),
         ]);
 
         conflictData.push({
@@ -93,13 +101,13 @@ export async function getResolution(
           },
           theirs: {
             content: theirsContent,
-            sha: pr.base.sha,
+            sha: latestTargetSha,
             ref: pr.base.ref,
           },
         });
       } catch (error) {
         logger.error(`Failed to process file ${filename}:`, error);
-        continue; // Skip this file and continue with others
+        continue;
       }
     }
 
@@ -109,7 +117,7 @@ export async function getResolution(
       try {
         const url = `${process.env.FLASK_URL}/mcr`;
         logger.info(`Attempting to send request to: ${url}`);
-        logger.info('Request payload:', {
+        logger.debug('Request payload:', {
           name: fileData.filename,
           base_code: fileData.base.content.substring(0, 100) + '...', // Log partial content
           branch_a_code: fileData.ours.content.substring(0, 100) + '...',
@@ -158,7 +166,7 @@ export async function getResolution(
         }
       } catch (error) {
         logger.error(
-          `Failed to send ${fileData.filename} to Flask server:`,
+          `Failed to send ${fileData.filename} of PR #${pullNumber} to Flask server:`,
           error
         );
       }
@@ -317,11 +325,11 @@ async function storeResolution(
   baseContent?: string,
   oursContent?: string,
   theirsContent?: string,
-  fileData?: ConflictData
+  fileData?: ConflictData,
+  commentId?: number
 ) {
   try {
     let repoEntity = await RepoService.getRepoByOwnerAndName(owner, repoName);
-
     if (!repoEntity) {
       let ownerEntity = await OwnerService.getOwnersById(owner);
       if (!ownerEntity) {
@@ -332,7 +340,6 @@ async function storeResolution(
           repos: [],
         });
       }
-
       repoEntity = await RepoService.createRepo({
         id: `${owner}/${repoName}`,
         full_name: repoName,
@@ -343,10 +350,19 @@ async function storeResolution(
       });
     }
 
-    resolvedCode = JSON.stringify(resolvedCode);
-    baseContent = JSON.stringify(baseContent);
-    oursContent = JSON.stringify(oursContent);
-    theirsContent = JSON.stringify(theirsContent);
+    // Stringify the content
+    const stringifiedResolved = JSON.stringify(resolvedCode);
+    const stringifiedBase = baseContent
+      ? JSON.stringify(baseContent)
+      : undefined;
+    const stringifiedOurs = oursContent
+      ? JSON.stringify(oursContent)
+      : undefined;
+    const stringifiedTheirs = theirsContent
+      ? JSON.stringify(theirsContent)
+      : undefined;
+
+    const currentTimestamp = new Date().toISOString();
 
     // Check if resolution already exists for this file in this PR
     const existingResolution =
@@ -356,55 +372,59 @@ async function storeResolution(
         filename
       );
 
-    const currentTimestamp = new Date().toISOString();
-
     if (existingResolution) {
-      // Update the existing resolution
-      existingResolution.resolvedCode = resolvedCode;
-      existingResolution.baseContent = baseContent;
-      existingResolution.oursContent = oursContent;
-      existingResolution.theirsContent = theirsContent;
-      existingResolution.confirmed = false;
-      existingResolution.applied = false;
-      existingResolution.lastProcessedTimestamp = currentTimestamp;
-
-      if (fileData?.ours?.ref) {
-        existingResolution.oursBranch = fileData.ours.ref;
-      }
-
-      if (fileData?.theirs?.ref) {
-        existingResolution.theirsBranch = fileData.theirs.ref;
-      }
-
-      await MergeConflictService.saveMergeResolution(existingResolution);
-      logger.info(`Updated resolution for ${filename} in PR #${pullNumber}`);
+      // Update the existing resolution using the service method
+      await MergeConflictService.updateMergeResolution(
+        existingResolution,
+        stringifiedResolved,
+        stringifiedBase,
+        stringifiedOurs,
+        stringifiedTheirs,
+        currentTimestamp,
+        fileData?.ours?.ref,
+        fileData?.theirs?.ref,
+        commentId
+      );
+      logger.info(
+        `Updated database resolution for ${filename} in PR #${pullNumber}`
+      );
+      return existingResolution;
     } else {
-      // Store as new resolution
-      const newResolution = new MergeResolution();
-      newResolution.repo = { id: repoEntity.id } as any;
-      newResolution.pullRequestNumber = pullNumber;
-      newResolution.filename = filename;
-      newResolution.resolvedCode = resolvedCode;
-      newResolution.baseContent = baseContent;
-      newResolution.oursContent = oursContent;
-      newResolution.theirsContent = theirsContent;
-      newResolution.confirmed = false;
-      newResolution.applied = false;
-      newResolution.lastProcessedTimestamp = currentTimestamp;
+      // Get the pull request by number and repo name
+      const pullRequest =
+        await PullRequestService.getPullRequestByNumberAndRepoName(
+          pullNumber,
+          `${owner}/${repoName}`
+        );
 
-      if (fileData?.ours?.ref) {
-        newResolution.oursBranch = fileData.ours.ref;
+      if (!pullRequest) {
+        logger.error(
+          `Pull request #${pullNumber} not found in repository ${owner}/${repoName}`
+        );
+        return null;
       }
 
-      if (fileData?.theirs?.ref) {
-        newResolution.theirsBranch = fileData.theirs.ref;
-      }
+      // Use the service method to create the resolution
+      const newResolution = await MergeConflictService.createMergeResolution(
+        repoEntity.id,
+        pullRequest,
+        filename,
+        stringifiedResolved,
+        stringifiedBase,
+        stringifiedOurs,
+        stringifiedTheirs,
+        currentTimestamp,
+        fileData?.ours?.ref,
+        fileData?.theirs?.ref,
+        commentId
+      );
 
-      await MergeConflictService.saveMergeResolution(newResolution);
       logger.info(`Stored new resolution for ${filename} in PR #${pullNumber}`);
+      return newResolution;
     }
   } catch (error) {
     logger.error(`Failed to store resolution for ${filename}:`, error);
+    return null;
   }
 }
 
@@ -420,27 +440,51 @@ export async function createResolutionComment(
   theirsContent?: string,
   fileData?: ConflictData
 ) {
-  let commentBody = `
+  try {
+    // Check for existing comment ID
+    const repoEntity = await RepoService.getRepoByOwnerAndName(owner, repo);
+    let existingCommentId: number | undefined;
+
+    if (repoEntity) {
+      const existingResolution =
+        await MergeConflictService.getResolutionByPRAndFilename(
+          repoEntity.id,
+          pullNumber,
+          filename
+        );
+      existingCommentId = existingResolution?.commentId;
+    }
+
+    // Prepare the comment body
+    let commentBody = `
 ### Resolution Summary for \`${filename}\`
 `;
 
-  // Add content only if we have all three versions
-  if (baseContent && oursContent && theirsContent) {
-    // Show the Git-style conflict view
-    const conflictView = generateGitStyleConflictView(
-      baseContent,
-      oursContent,
-      theirsContent,
-      fileData
-    );
+    // Ensure we have valid content in all three versions
+    const hasValidContent =
+      baseContent &&
+      baseContent.trim().length > 0 &&
+      oursContent &&
+      oursContent.trim().length > 0 &&
+      theirsContent &&
+      theirsContent.trim().length > 0;
 
-    const oursBranchName = fileData?.ours?.ref;
-    const theirsBranchName = fileData?.theirs?.ref;
+    if (hasValidContent) {
+      // Generate conflict view with all three versions
+      const conflictView = generateGitStyleConflictView(
+        baseContent!,
+        oursContent!,
+        theirsContent!,
+        fileData
+      );
 
-    const oursDiff = generateResolutionDiff(oursContent, resolvedCode);
-    const theirsDiff = generateResolutionDiff(theirsContent, resolvedCode);
+      const oursBranchName = fileData?.ours?.ref;
+      const theirsBranchName = fileData?.theirs?.ref;
 
-    commentBody += `
+      const oursDiff = generateResolutionDiff(oursContent!, resolvedCode);
+      const theirsDiff = generateResolutionDiff(theirsContent!, resolvedCode);
+
+      commentBody += `
 #### Git-style Conflict View
 <details>
 <summary>Click to see the original conflict</summary>
@@ -463,8 +507,8 @@ ${resolvedCode}
 
 <details open>
 <summary>Changes from resolution to your branch (${
-      oursBranchName || 'YOURS'
-    })</summary>
+        oursBranchName || 'YOURS'
+      })</summary>
 
 \`\`\`diff
 ${oursDiff}
@@ -473,25 +517,25 @@ ${oursDiff}
 
 <details open>
 <summary>Changes from resolution to the target branch (${
-      theirsBranchName || 'THEIRS'
-    })</summary>
+        theirsBranchName || 'THEIRS'
+      })</summary>
 
 \`\`\`diff
 ${theirsDiff}
 \`\`\`
 </details>
 `;
-  } else {
-    // Fallback if we don't have all three versions
-    commentBody += `
+    } else {
+      // Fallback if we don't have all three versions
+      commentBody += `
 #### Resolved Code
 \`\`\`
 ${resolvedCode}
 \`\`\`
 `;
-  }
+    }
 
-  commentBody += `
+    commentBody += `
 Note: This is an automated suggestion. Please review the changes carefully before merging. If you are satisfied with the resolution, you can approve the changes by commenting 
 \`\`\`
 Apply all resolutions
@@ -500,25 +544,78 @@ Apply all resolutions
 Please note there will be no further confirmation before applying all resolutions.
 `;
 
-  // Create the comment in GitHub
-  await octokit.rest.issues.createComment({
-    owner,
-    repo,
-    issue_number: pullNumber,
-    body: commentBody,
-  });
+    let commentId = existingCommentId;
 
-  await storeResolution(
-    owner,
-    repo,
-    pullNumber,
-    filename,
-    resolvedCode,
-    baseContent,
-    oursContent,
-    theirsContent,
-    fileData
-  );
+    // Either update existing comment or create a new one
+    if (commentId) {
+      try {
+        await octokit.rest.issues.updateComment({
+          owner,
+          repo,
+          comment_id: commentId,
+          body: commentBody,
+        });
+
+        logger.info(`Updated resolution comment for ${filename}`);
+      } catch (error) {
+        // If update fails, create a new comment
+        const { data: comment } = await octokit.rest.issues.createComment({
+          owner,
+          repo,
+          issue_number: pullNumber,
+          body: commentBody,
+        });
+        commentId = comment.id;
+
+        logger.info(
+          `Created new resolution comment for ${filename} after update failure`
+        );
+      }
+    } else {
+      // Create a new comment
+      const { data: comment } = await octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: pullNumber,
+        body: commentBody,
+      });
+      commentId = comment.id;
+
+      logger.info(`Created new resolution comment for ${filename}`);
+    }
+
+    // Store the resolution with the comment ID
+    return await storeResolution(
+      owner,
+      repo,
+      pullNumber,
+      filename,
+      resolvedCode,
+      baseContent,
+      oursContent,
+      theirsContent,
+      fileData,
+      commentId
+    );
+  } catch (error) {
+    logger.error(
+      `Failed to create/update resolution comment for ${filename}:`,
+      error
+    );
+
+    // Fall back to just storing the resolution without comment ID
+    return await storeResolution(
+      owner,
+      repo,
+      pullNumber,
+      filename,
+      resolvedCode,
+      baseContent,
+      oursContent,
+      theirsContent,
+      fileData
+    );
+  }
 }
 
 export async function checkForCommitResolutionCommands(
@@ -557,7 +654,11 @@ export async function checkForCommitResolutionCommands(
     let applyAllUser: string | undefined;
     let commandTimestamp: string | undefined;
 
-    const repoEntity = await RepoService.getRepoByOwnerAndName(owner, repo);
+    const repoFullname = `${owner}/${repo}`;
+    const repoEntity = await RepoService.getRepoByOwnerAndName(
+      owner,
+      repoFullname
+    );
     if (!repoEntity) {
       logger.error(`Repository ${owner}/${repo} not found in database`);
       return { applyAll: false };
@@ -678,7 +779,11 @@ export async function resolveAllConflicts(
   let tempBranch: string | null = null;
 
   try {
-    const repoEntity = await RepoService.getRepoByOwnerAndName(owner, repo);
+    const repoFullname = `${owner}/${repo}`;
+    const repoEntity = await RepoService.getRepoByOwnerAndName(
+      owner,
+      repoFullname
+    );
     if (!repoEntity) {
       logger.error(`Repository ${owner}/${repo} not found in database`);
       return false;
