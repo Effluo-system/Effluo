@@ -5,6 +5,7 @@ import {
   getResolution,
 } from '../functions/textual-merge-conflict-resolution/textualMergeConflictResolution.ts';
 import { calculateReviewDifficultyOfPR } from '../functions/workload-calculation/workloadCalculation.ts';
+import { PRReviewRequestService } from '../services/prReviewRequest.service.ts';
 import { PullRequestService } from '../services/pullRequest.service.ts';
 import type { CustomError } from '../types/common.d.ts';
 import { checkForMergeConflicts } from '../utils/checkForMergeConflicts.ts';
@@ -206,6 +207,50 @@ app.webhooks.on('push', async ({ octokit, payload }) => {
       } else {
         logger.error(`Error processing PR #${pr.number}: ${error}`);
       }
+    }
+  }
+});
+
+app.webhooks.on('pull_request.synchronize', async ({ octokit, payload }) => {
+  try {
+    const files = await analyzePullRequest(
+      octokit,
+      payload.repository.owner.login,
+      payload.repository.name,
+      payload.pull_request.number,
+      payload.pull_request.base.ref,
+      payload.pull_request.head.ref
+    );
+
+    const reviewDifficulty = await calculateReviewDifficultyOfPR(files);
+
+    const prPromise = PullRequestService.getPullRequestById(
+      payload?.pull_request?.id?.toString()
+    );
+    const reviewRequestPromise = PRReviewRequestService.findByPRId(
+      payload?.pull_request?.id?.toString()
+    );
+    const [pr, reviewRequest] = await Promise.all([
+      prPromise,
+      reviewRequestPromise,
+    ]);
+
+    if (pr) {
+      pr.reviewDifficulty = reviewDifficulty;
+      await PullRequestService.updatePullRequest(pr);
+    }
+    if (reviewRequest) {
+      reviewRequest.weight = reviewDifficulty;
+      await PRReviewRequestService.updatePRReviewRequest(reviewRequest);
+    }
+  } catch (error) {
+    const customError = error as CustomError;
+    if (customError.response) {
+      logger.error(
+        `Error updating the review difficulty` + customError.message
+      );
+    } else {
+      logger.error(`Error updating the review difficulty` + error);
     }
   }
 });
