@@ -54,7 +54,7 @@ async function setupLocalRepo(
     logger.error('Failed to set up local repo for conflict detection:', error);
 
     try {
-      fs.rmdirSync(tempDir, { recursive: true });
+      fs.rmSync(tempDir, { recursive: true, force: true });
     } catch (cleanupError) {
       logger.error('Failed to clean up temp directory:', cleanupError);
     }
@@ -94,7 +94,7 @@ function getGitConflictedFiles(repoPath: string, headBranch: string): string[] {
 
 function cleanupLocalRepo(repoPath: string): void {
   try {
-    fs.rmdirSync(repoPath, { recursive: true });
+    fs.rmSync(repoPath, { recursive: true, force: true });
   } catch (error) {
     logger.error('Failed to clean up local repository:', error);
   }
@@ -336,8 +336,6 @@ export async function extractConflictedFiles(
       repo,
       pull_number: pullNumber,
     });
-
-    logger.info(`PR #${pullNumber} mergeable status: ${pr.mergeable}`);
 
     if (pr.mergeable === true) {
       logger.info(`PR #${pullNumber} is mergeable, no conflicts to resolve`);

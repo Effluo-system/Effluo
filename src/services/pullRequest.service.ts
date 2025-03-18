@@ -1,5 +1,3 @@
-import { PullRequest } from '../entities/pullRequest.entity.ts';
-import { AppDataSource } from '../server/server.ts';
 import type {
   PullRequestLabeledEvent,
   PullRequestOpenedEvent,
@@ -11,14 +9,13 @@ import type {
   PullRequestUnlabeledEvent,
   User,
 } from '@octokit/webhooks-types/schema.d.ts';
+import { Octokit } from 'octokit';
+import { PullRequest } from '../entities/pullRequest.entity.ts';
+import { AppDataSource } from '../server/server.ts';
 import { logger } from '../utils/logger.ts';
 import { OwnerService } from './owner.service.ts';
-import { RepoService } from './repo.service.ts';
-import { Octokit } from 'octokit';
-import { In } from 'typeorm';
-import { PRReviewRequest } from '../entities/prReviewRequest.entity.ts';
 import { PRReviewRequestService } from './prReviewRequest.service.ts';
-import { Repo } from '../entities/repo.entity.ts';
+import { RepoService } from './repo.service.ts';
 export class PullRequestService {
   private static pullRequestRepository =
     AppDataSource.getRepository(PullRequest);
@@ -184,5 +181,25 @@ export class PullRequestService {
     }
   }
 
-  
+  public static async getPullRequestByNumberAndRepoName(
+    number: number,
+    repoName: string
+  ): Promise<PullRequest | null> {
+    try {
+      return this.pullRequestRepository.findOne({
+        where: {
+          number,
+          repository: {
+            full_name: repoName,
+          },
+        },
+        relations: ['repository'],
+      });
+    } catch (error) {
+      logger.error(error);
+      throw new Error(
+        `Error getting pull request by number and repo name from db: ${error}`
+      );
+    }
+  }
 }

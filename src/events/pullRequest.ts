@@ -10,16 +10,10 @@ import {
 } from '../functions/semantic-conflict-detection/semanticConflictDetection.ts';
 import { calculateReviewDifficultyOfPR } from '../functions/workload-calculation/workloadCalculation.ts';
 import { PullRequest } from '../entities/pullRequest.entity.ts';
-import { AppDataSource } from '../server/server.ts';  
-import { PrFeedback } from '../entities/prFeedback.entity.ts';  
-import { prioritizePullRequest} from '../functions/pr-prioritization/pr-prioritization.ts';
+import { AppDataSource } from '../server/server.ts';
+import { PrFeedback } from '../entities/prFeedback.entity.ts';
+import { prioritizePullRequest } from '../functions/pr-prioritization/pr-prioritization.ts';
 import { PRReviewRequestService } from '../services/prReviewRequest.service.ts';
-
-const messageForNewPRs = fs.readFileSync('./src/messages/message.md', 'utf8');
-const messageForNewLabel = fs.readFileSync(
-  './src/messages/messageNewLabel.md',
-  'utf8'
-);
 
 const postAIValidationForm = async (
   octokit: any,
@@ -72,13 +66,6 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
     `Received a pull request event for #${payload.pull_request.number}`
   );
   try {
-    await octokit.rest.issues.createComment({
-      owner: payload.repository.owner.login,
-      repo: payload.repository.name,
-      issue_number: payload.pull_request.number,
-      body: messageForNewPRs,
-    });
-
     const files1 = await analyzePullRequest(
       octokit,
       payload.repository.owner.login,
@@ -265,13 +252,6 @@ app.webhooks.on(
       if (!payload.sender.login.includes('bot')) {
         logger.info(`Received a label event for #${payload?.label?.name}`);
 
-        await octokit.rest.issues.createComment({
-          owner: payload.repository.owner.login,
-          repo: payload.repository.name,
-          issue_number: payload.pull_request.number,
-          body: messageForNewLabel,
-        });
-
         let pr = await PullRequestService.getPullRequestById(
           payload?.pull_request?.id.toString()
         );
@@ -340,8 +320,7 @@ app.webhooks.on('pull_request', async ({ octokit, payload }) => {
       payload.repository.name,
       payload.pull_request.number
     );
-  }
-  catch (error) {
+  } catch (error) {
     const customError = error as CustomError;
     if (customError.response) {
       logger.error(
