@@ -111,7 +111,9 @@ function findMostWorkedInCategory(
   );
 }
 
-const fetchSummaryForEachRepo = async (newSummary: FrequencySummaryResult) => {
+export const fetchSummaryForEachRepo = async (
+  newSummary: FrequencySummaryResult
+) => {
   logger.debug('Fetching previous summary for each repo ...');
   Object.keys(newSummary).forEach(async (repoId) => {
     const previousSummary = await UserReviewSummaryService.getSummaryByRepoId(
@@ -164,13 +166,12 @@ const fetchSummaryForEachRepo = async (newSummary: FrequencySummaryResult) => {
   });
 };
 
-function areSummariesEqual(
+export function areSummariesEqual(
   oldSummary: FrequencySummaryResultForEachRepo,
   newSummary: FrequencySummaryResultForEachRepo
 ): boolean {
   const oldKeys = Object.keys(oldSummary);
   const newKeys = Object.keys(newSummary);
-
   // Check if both have the same keys
   if (oldKeys.length !== newKeys.length) {
     return false;
@@ -189,7 +190,7 @@ function areSummariesEqual(
 }
 
 // Function to rank developers within each category
-const rankDevelopersByCategory = (data: UserReviewSummary) => {
+export const rankDevelopersByCategory = (data: UserReviewSummary) => {
   const rankedData: Record<
     string,
     Record<string, { user: string; count: number }[]>
@@ -222,7 +223,7 @@ const rankDevelopersByCategory = (data: UserReviewSummary) => {
   return rankedData;
 };
 
-const findMostSuitableDev = async (
+export const findMostSuitableDev = async (
   ranks: Record<string, Record<string, { user: string; count: number }[]>>
 ) => {
   const result: Record<string, Record<string, string>> = {}; // Final output object
@@ -240,7 +241,6 @@ const findMostSuitableDev = async (
             user.user,
             repoId
           );
-
         const currentIssues = await IssueService.findByUserLogin(user.user);
 
         const reviewRequestWorkload = currentReviewRequests?.reduce(
