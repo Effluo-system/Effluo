@@ -192,86 +192,111 @@ function generateGitStyleConflictView(
   const ourLines = oursContent.split('\n');
   const theirLines = theirsContent.split('\n');
 
+  // Use diff3 to identify where the conflicts are
   const mergeResult = diff3(ourLines, baseLines, theirLines);
+
+  // Get branch references for conflict markers
+  const oursRef = fileData?.ours?.ref || 'YOURS';
+  const theirsRef = fileData?.theirs?.ref || 'THEIRS';
 
   let conflictView = '';
   let hasConflict = false;
 
-  // Process each chunk of the merge result
+  // Find only the actual differences by comparing line by line
+  function findMinimalDifferences(a: string[], o: string[], b: string[]) {
+    let startIdx = 0;
+    const minLength = Math.min(a.length, o.length, b.length);
+
+    while (
+      startIdx < minLength &&
+      a[startIdx] === o[startIdx] &&
+      o[startIdx] === b[startIdx]
+    ) {
+      startIdx++;
+    }
+
+    // Find the end of the differences (working backward)
+    let aEndIdx = a.length - 1;
+    let oEndIdx = o.length - 1;
+    let bEndIdx = b.length - 1;
+
+    while (
+      aEndIdx >= startIdx &&
+      oEndIdx >= startIdx &&
+      bEndIdx >= startIdx &&
+      a[aEndIdx] === o[oEndIdx] &&
+      o[oEndIdx] === b[bEndIdx]
+    ) {
+      aEndIdx--;
+      oEndIdx--;
+      bEndIdx--;
+    }
+
+    // Return slices of the arrays that actually differ
+    return {
+      commonStart: a.slice(0, startIdx),
+      ours: a.slice(startIdx, aEndIdx + 1),
+      base: o.slice(startIdx, oEndIdx + 1),
+      theirs: b.slice(startIdx, bEndIdx + 1),
+      commonEnd: a.slice(aEndIdx + 1),
+    };
+  }
+
+  // Process each chunk to create a true Git-style three-way output
   for (const chunk of mergeResult) {
     if ('conflict' in chunk) {
-      // This is a conflict chunk
       hasConflict = true;
 
-      // Format as standard three-way merge conflict:
-      // <<<<<<< branch-name (Your branch)
-      // [your changes]
-      // ||||||| BASE
-      // [original code]
-      // =======
-      // [their changes]
-      // >>>>>>> target-branch-name (Target branch)
-      const oursRef = fileData?.ours?.ref || 'YOURS';
-      const theirsRef = fileData?.theirs?.ref || 'THEIRS';
-
-      conflictView += `<<<<<<< ${oursRef} (Your branch)\n`;
       if (
         chunk.conflict &&
         chunk.conflict.a &&
-        Array.isArray(chunk.conflict.a)
-      ) {
-        chunk.conflict.a.forEach((line) => (conflictView += line + '\n'));
-      }
-
-      conflictView += '||||||| BASE\n';
-      if (
-        chunk.conflict &&
+        Array.isArray(chunk.conflict.a) &&
         chunk.conflict.o &&
-        Array.isArray(chunk.conflict.o)
-      ) {
-        chunk.conflict.o.forEach((line) => (conflictView += line + '\n'));
-      }
-
-      conflictView += '=======\n';
-      if (
-        chunk.conflict &&
+        Array.isArray(chunk.conflict.o) &&
         chunk.conflict.b &&
         Array.isArray(chunk.conflict.b)
       ) {
-        chunk.conflict.b.forEach((line) => (conflictView += line + '\n'));
-      }
+        conflictView += `<<<<<<< ${oursRef} (Your branch)\n`;
+        chunk.conflict.a.forEach((line) => (conflictView += line + '\n'));
 
-      conflictView += `>>>>>>> ${theirsRef} (Target branch)\n`;
+        conflictView += '||||||| BASE\n';
+        chunk.conflict.o.forEach((line) => (conflictView += line + '\n'));
+
+        conflictView += '=======\n';
+        chunk.conflict.b.forEach((line) => (conflictView += line + '\n'));
+
+        conflictView += `>>>>>>> ${theirsRef} (Target branch)\n`;
+      }
     } else {
-      // Non-conflict chunk (array of lines)
+      // Non-conflict chunk - common code
       if (Array.isArray(chunk)) {
-        for (const line of chunk) {
-          conflictView += line + '\n';
-        }
+        chunk.forEach((line) => (conflictView += line + '\n'));
       }
     }
   }
 
-  // If no conflicts were found, create a custom conflict view
+  // If diff3 didn't find conflicts automatically, create a custom three-way view
   if (!hasConflict) {
-    conflictView = '';
+    // Use our helper function to find actual differences
+    const diffs = findMinimalDifferences(ourLines, baseLines, theirLines);
 
-    // Add some context (up to 3 lines)
-    const contextLineCount = Math.min(3, baseLines.length);
-    for (let i = 0; i < contextLineCount; i++) {
-      conflictView += baseLines[i] + '\n';
-    }
+    // Add common start content
+    diffs.commonStart.forEach((line) => (conflictView += line + '\n'));
 
-    const oursRef = fileData?.ours?.ref || 'YOURS';
-    const theirsRef = fileData?.theirs?.ref || 'THEIRS';
-
+    // Add conflict markers with all three versions
     conflictView += `<<<<<<< ${oursRef} (Your branch)\n`;
-    conflictView += oursContent + '\n';
+    diffs.ours.forEach((line) => (conflictView += line + '\n'));
+
     conflictView += '||||||| BASE\n';
-    conflictView += baseContent + '\n';
+    diffs.base.forEach((line) => (conflictView += line + '\n'));
+
     conflictView += '=======\n';
-    conflictView += theirsContent + '\n';
+    diffs.theirs.forEach((line) => (conflictView += line + '\n'));
+
     conflictView += `>>>>>>> ${theirsRef} (Target branch)\n`;
+
+    // Add common end content
+    diffs.commonEnd.forEach((line) => (conflictView += line + '\n'));
   }
 
   return conflictView;
@@ -429,8 +454,12 @@ export async function createResolutionComment(
   fileData?: ConflictData
 ) {
   try {
+    const fullRepoName = `${owner}/${repo}`;
     // Check for existing comment ID
-    const repoEntity = await RepoService.getRepoByOwnerAndName(owner, repo);
+    const repoEntity = await RepoService.getRepoByOwnerAndName(
+      owner,
+      fullRepoName
+    );
     let existingCommentId: number | undefined;
 
     if (repoEntity) {
