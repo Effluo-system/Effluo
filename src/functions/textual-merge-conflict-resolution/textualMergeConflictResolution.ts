@@ -2,7 +2,6 @@ import { Octokit } from '@octokit/rest';
 import diff3 from 'diff3';
 import { Base64 } from 'js-base64';
 import { MergeConflictService } from '../../services/mergeConflict.service.ts';
-import { OwnerService } from '../../services/owner.service.ts';
 import { PullRequestService } from '../../services/pullRequest.service.ts';
 import { RepoService } from '../../services/repo.service.ts';
 import { ConflictData, ResolutionData } from '../../types/mergeConflicts';
@@ -329,25 +328,14 @@ async function storeResolution(
   commentId?: number
 ) {
   try {
-    let repoEntity = await RepoService.getRepoByOwnerAndName(owner, repoName);
+    const fullRepoName = `${owner}/${repoName}`;
+    let repoEntity = await RepoService.getRepoByOwnerAndName(
+      owner,
+      fullRepoName
+    );
     if (!repoEntity) {
-      let ownerEntity = await OwnerService.getOwnersById(owner);
-      if (!ownerEntity) {
-        ownerEntity = await OwnerService.createOwner({
-          id: owner,
-          login: owner,
-          url: `https://github.com/${owner}`,
-          repos: [],
-        });
-      }
-      repoEntity = await RepoService.createRepo({
-        id: `${owner}/${repoName}`,
-        full_name: repoName,
-        url: `https://github.com/${owner}/${repoName}`,
-        owner: ownerEntity,
-        user_review_summary: null,
-        issues: null,
-      });
+      logger.error(`Repository ${fullRepoName} not found in database`);
+      return null;
     }
 
     // Stringify the content
