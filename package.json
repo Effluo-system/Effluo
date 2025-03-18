@@ -25,7 +25,7 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.6.3",
     "vite": "^4.5.3",
-    "vitest": "0.30.0"
+    "vitest": "^3.0.9"
   },
   "dependencies": {
     "@octokit/app": "^15.1.1",
