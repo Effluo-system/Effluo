@@ -9,7 +9,6 @@ import {
 import { UserReviewSummaryService } from '../../services/userReviewSummary.service.ts';
 import { logger } from '../../utils/logger.ts';
 import { RepoService } from '../../services/repo.service.ts';
-import { Octokit } from '@octokit/rest';
 import {
   createWorkflowFileFromTemplate,
   pushWorkflowFilesToGithub,

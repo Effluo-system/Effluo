@@ -1,7 +1,7 @@
 import { logger } from '../../../utils/logger.ts';
 import { Octokit } from '@octokit/rest';
 import { autoAssignReviewerWorkflow } from './Templates/autoAssignReviewer.ts';
-import { jwtToken } from '../../../utils/generateGithubJWT.ts';
+import { createNewJWT } from '../../../utils/generateGithubJWT.ts';
 import {
   CommittableFile,
   FrequencySummaryResultForEachRepo,
@@ -41,8 +41,9 @@ export const pushWorkflowFilesToGithub = async (
   summary: FrequencySummaryResultForEachRepo
 ) => {
   try {
+    const jwt = createNewJWT();
     const octokit = new Octokit({
-      auth: `Bearer ${jwtToken}`,
+      auth: `Bearer ${jwt}`,
     });
     // Check if the file already exists
     const installations = await octokit.apps.listInstallations();
