@@ -6,7 +6,7 @@ import { Base64 } from 'js-base64';
 import * as path from 'path';
 import { logger } from './logger.ts';
 
-function executeGitCommand(command: string, cwd: string): string {
+export function executeGitCommand(command: string, cwd: string): string {
   try {
     return execSync(command, { cwd, encoding: 'utf8' }).toString();
   } catch (error) {
@@ -63,7 +63,10 @@ async function setupLocalRepo(
   }
 }
 
-function getGitConflictedFiles(repoPath: string, headBranch: string): string[] {
+export function getGitConflictedFiles(
+  repoPath: string,
+  headBranch: string
+): string[] {
   try {
     try {
       executeGitCommand(`git merge origin/${headBranch}`, repoPath);
@@ -92,7 +95,7 @@ function getGitConflictedFiles(repoPath: string, headBranch: string): string[] {
   }
 }
 
-function cleanupLocalRepo(repoPath: string): void {
+export function cleanupLocalRepo(repoPath: string): void {
   try {
     fs.rmSync(repoPath, { recursive: true, force: true });
   } catch (error) {
@@ -123,7 +126,7 @@ async function getFileContent(
   }
 }
 
-function isBinaryFile(filename: string): boolean {
+export function isBinaryFile(filename: string): boolean {
   const binaryExtensions = [
     '.png',
     '.jpg',
@@ -152,7 +155,7 @@ function isBinaryFile(filename: string): boolean {
   return binaryExtensions.some((ext) => filename.toLowerCase().endsWith(ext));
 }
 
-function isJsonFile(filename: string): boolean {
+export function isJsonFile(filename: string): boolean {
   return (
     filename.endsWith('.json') ||
     filename === '.eslintrc' ||
