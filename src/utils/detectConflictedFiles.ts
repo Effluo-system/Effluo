@@ -351,15 +351,14 @@ export async function extractConflictedFiles(
       pull_number: pullNumber,
     });
 
-    const modifiedFiles = files.filter((file) => file.status === 'modified');
+    const modifiedFiles = files.filter(
+      (file) => file.status === 'modified' || file.status === 'added'
+    );
+
     if (modifiedFiles.length === 0) {
-      logger.info('No modified files found in PR');
+      logger.info(`No modified files found in PR #${pullNumber}`);
       return [];
     }
-
-    logger.info(
-      `Checking ${modifiedFiles.length} modified files for conflicts`
-    );
 
     const baseBranch = pr.base.ref;
     const headBranch = pr.head.ref;
@@ -377,7 +376,14 @@ export async function extractConflictedFiles(
 
     if (success) {
       const allConflictedFiles = getGitConflictedFiles(repoPath, headBranch);
-      logger.info(`Git detected ${allConflictedFiles.length} conflicted files`);
+      logger.info(
+        `Git detected ${allConflictedFiles.length} conflicted files in PR #${pullNumber}`
+      );
+
+      logger.info(
+        'Modified files:',
+        modifiedFiles.map((file) => file.filename)
+      );
 
       const modifiedFilePaths = modifiedFiles.map((file) => file.filename);
       const conflictingFiles = allConflictedFiles.filter((file) =>
@@ -385,7 +391,7 @@ export async function extractConflictedFiles(
       );
 
       logger.info(
-        `Found ${conflictingFiles.length} modified files with conflicts using Git`
+        `Found ${conflictingFiles.length} modified files with conflicts using Git for PR #${pullNumber}`
       );
 
       cleanupLocalRepo(localRepoPath);
