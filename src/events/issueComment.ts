@@ -20,10 +20,6 @@ app.webhooks.on(['issue_comment.created'], async ({ octokit, payload }) => {
   }
 
   try {
-    // Avoid processing comments from the bot itself
-  if (payload.comment.user?.type === 'Bot') {
-    return;
-  }
     // Check for commit resolution commands
     const { applyAll, commentId, user, commandTimestamp } =
       await checkForCommitResolutionCommands(
@@ -111,13 +107,12 @@ app.webhooks.on(['issue_comment.created'], async ({ octokit, payload }) => {
       logger.info(`Deleted old bot comment: ${comment.id}`);
     }
 
-
     await prioritizePullRequest(
-        octokit as any,
-        payload.repository.owner.login,
-        payload.repository.name,
-        payload.issue.number
-      );
+      octokit as any,
+      payload.repository.owner.login,
+      payload.repository.name,
+      payload.issue.number
+    );
   } catch (error) {
     logger.error(`Error processing comment webhook: ${error}`);
   }
