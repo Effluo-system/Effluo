@@ -5,6 +5,7 @@ import {
   PrimaryGeneratedColumn,
   Relation,
 } from 'typeorm';
+import { PullRequest } from './pullRequest.entity.ts';
 import { Repo } from './repo.entity.ts';
 
 @Entity()
@@ -17,8 +18,10 @@ export class MergeResolution {
   })
   repo!: Relation<Repo>;
 
-  @Column({ type: 'integer', nullable: false })
-  pullRequestNumber!: number;
+  @ManyToOne(() => PullRequest, {
+    nullable: false,
+  })
+  pullRequest!: Relation<PullRequest>;
 
   @Column({ type: 'varchar', nullable: false })
   filename!: string;
@@ -52,4 +55,7 @@ export class MergeResolution {
 
   @Column({ type: 'varchar', nullable: true })
   lastProcessedTimestamp?: string;
+
+  @Column({ type: 'bigint', nullable: true })
+  commentId?: number;
 }

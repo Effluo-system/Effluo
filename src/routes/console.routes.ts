@@ -7,6 +7,8 @@ import { IssueService } from '../services/issue.service.ts';
 import { UserReviewSummaryService } from '../services/userReviewSummary.service.ts';
 import { PRReviewRequestService } from '../services/prReviewRequest.service.ts';
 import { analyzeReviewers } from '../functions/analyse-reviewers/analyseReviewers.ts';
+import { performance } from 'perf_hooks';
+import { logger } from '../utils/logger.ts';
 const router = Router();
 
 router.get('/console/prs', async (req: Request, res: Response) => {
@@ -121,8 +123,14 @@ router.get(
   '/console/trigger-reviewer-algorithm',
   async (req: Request, res: Response) => {
     try {
+      const start = performance.now();
       const result = await analyzeReviewers();
-
+      const end = performance.now();
+      logger.info(
+        `Time taken to execute reviewer analysis is ${(end - start).toFixed(
+          3
+        )}ms.`
+      );
       res.json(result);
     } catch (err) {
       if ((err as Error).message === 'unauthorized')

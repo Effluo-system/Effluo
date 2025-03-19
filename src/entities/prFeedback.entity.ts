@@ -5,12 +5,12 @@ export class PrFeedback {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column()
+  @Column({ type: 'int' })
   pr_number!: number;
 
   @Column({ type: 'boolean' })
   conflict_confirmed!: boolean;
 
-  @Column({ type: 'text', nullable: true })  
-  explanation!: string | null;  
+  @Column({ type: 'text', nullable: true })
+  explanation!: string | null;
 }
