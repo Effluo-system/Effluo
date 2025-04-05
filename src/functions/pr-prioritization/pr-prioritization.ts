@@ -40,6 +40,12 @@ interface PullRequestEventData {
 
 type ValidPriority = "HIGH" | "MEDIUM" | "LOW" | null;
 
+interface RLModelResponse{
+  success: boolean;
+  message: string;
+  modelUpdated?: boolean;
+}
+
 
 /**
  * Extract comprehensive PR data when a PR is created or updated
@@ -78,6 +84,9 @@ export async function extractPullRequestData(
       owner,
       repo,
       issue_number: pullNumber,
+      per_page: 100,
+      sort: 'created',
+      direction: 'desc',
     });
 
     // Get reviewers
@@ -102,6 +111,8 @@ export async function extractPullRequestData(
       body: comment.body || '',
       createdAt: comment.created_at
     }));
+
+    logger.info('extracted comments : ', commentData);
 
     // Extract reviewers' logins
     const reviewers = [
@@ -192,6 +203,13 @@ export async function sendPRDataForProcessing(
 
     // Convert to the format expected by the prioritizer
     const convertedData = convertToPrioritizerFormat(prData);
+    // const PR = await PullRequestService.getPullRequestById(prData.number.toString());
+    //  if (!PR) {
+    //   logger.error(`Repository not found for PR #${prData.number}`);
+    //   return undefined;
+    // }
+
+    // const reporsitoryName = PR.repository;
     
     const response = await fetch(url, {
       method: 'POST',
@@ -215,6 +233,33 @@ export async function sendPRDataForProcessing(
       const prediction = result.predictions[0];
       priority = prediction.predicted_priority.toLowerCase();
       score = Math.round(prediction.confidence * 100);
+
+      const newPriorityPrediction = new PrPriorityFeedback();
+      const feedbackRepository = AppDataSource.getRepository(PrPriorityFeedback);
+
+      const commentBodies = prData.comments.map(comment => comment.body).join('\n\n'); 
+      const fullBody = `${prData.description || ''}\n\n${commentBodies}`;
+      logger.info(`Full body: ${fullBody}`);
+
+      newPriorityPrediction.pr_number = prData.number;
+      newPriorityPrediction.predicted_priority = priority.toUpperCase() as ValidPriority;
+      newPriorityPrediction.predicted_priority_score = score;
+      newPriorityPrediction.priority_confirmed = false;
+      newPriorityPrediction.actual_priority = null;
+      newPriorityPrediction.title = prData.title;
+      newPriorityPrediction.owner = prData.author.login;
+      newPriorityPrediction.body = fullBody;
+      newPriorityPrediction.comments = prData.comments.length;
+      newPriorityPrediction.total_additions = convertedData.pull_requests[0].additions;
+      newPriorityPrediction.changed_files_count = convertedData.pull_requests[0].changed_files;
+      newPriorityPrediction.total_deletions = convertedData.pull_requests[0].deletions;
+      newPriorityPrediction.author_association = prData.author.association;
+      // newPriorityPrediction.repo = reporsitoryName.toString();
+      newPriorityPrediction.created_at = new Date(prData.createdAt);
+      newPriorityPrediction.updated_at = new Date(prData.updatedAt);
+      
+      await feedbackRepository.save(newPriorityPrediction);
+      logger.info(`Stored predicted priority for PR #${prData.number}: ${priority}`);
     }
     
     logger.info(`Successfully processed PR #${prData.number}`, {
@@ -303,12 +348,6 @@ export async function createPriorityComment(
       pull_number: pullNumber,
     });
 
-    // Don't create comment if PR is closed
-    if (pr.state !== "open") {
-      logger.info(`Skipping priority comment for PR #${pullNumber} as it is ${pr.state}`);
-      return false;
-    }
-
     // Fetch all comments on the PR
     const { data: comments } = await octokit.rest.issues.listComments({
       owner,
@@ -326,7 +365,7 @@ export async function createPriorityComment(
     //Identify user feedbacks on priority
     const feedbackComments = comments.filter(comment => 
       comment.user?.type !== 'Bot' && 
-      ["CONFIRMED", "HIGH", "MEDIUM", "LOW"].some(priority => 
+      ["CONFIRM", "HIGH", "MEDIUM", "LOW"].some(priority => 
         comment.body?.toUpperCase().includes(priority)
       )
     );
@@ -390,7 +429,7 @@ ${deploymentMessage}
 
 ### 📝 **Is this priority correct?**  
 Please confirm by replying with:  
-- ✅ **Confirmed** (if correct)  
+- ✅ **Confirm** (if correct)  
 - ❌ **Incorrect - Provide Actual Priority** (e.g., "Actual Priority: High")  
 
 _Example reply: "Medium"_
@@ -470,18 +509,23 @@ export async function processPriorityFeedback(
   pullNumber: number,
 ) {
   try {
+    logger.info(`Processing feedback for PR #${pullNumber}`);
     const { data: comments } = await octokit.rest.issues.listComments({
       owner,
       repo,
       issue_number: pullNumber,
     });
 
+    let feedbackReceived = false;
+    let feedbackType = '';
+
     for (const comment of comments) {
       const commentText = comment.body?.trim().toUpperCase();
       const feedbackRepository = AppDataSource.getRepository(PrPriorityFeedback);
       const feedback = await feedbackRepository.findOneBy({ pr_number: pullNumber });
 
-      if (commentText?.includes('CONFIRMED')) {
+
+      if (commentText?.includes('CONFIRM')) {
         logger.info(`Feedback confirmed for PR #${pullNumber}`);
         const priority_confirmed = true;
        
@@ -489,6 +533,8 @@ export async function processPriorityFeedback(
         if (feedback) {
           await feedbackRepository.update(feedback.id, { priority_confirmed, actual_priority });
           logger.info(`Updated feedback for PR #${pullNumber}: confirmed priority`);
+          feedbackReceived = true;
+          feedbackType = 'confirmed';
         } else {
           logger.warn(`No feedback found for PR #${pullNumber}`);
         }
@@ -504,10 +550,30 @@ export async function processPriorityFeedback(
           const priority_confirmed = true;
           await feedbackRepository.update(feedback.id, { predicted_priority,priority_confirmed, actual_priority });
           logger.info(`Updated feedback for PR #${pullNumber}: actual priority set to ${actual_priority}`);
+          feedbackReceived = true;
+          feedbackType = 'actual_priority';
         } else {
           logger.warn(`No feedback found for PR #${pullNumber}`);
         }
       }
+    }
+    if (feedbackReceived) {
+      let thankYouMessage = '';
+      
+      if (feedbackType === 'confirmed') {
+        thankYouMessage = `✅ Thank you for confirming the priority assessment for this PR! Your feedback helps improve our prioritization system. 📊`;
+      } else {
+        thankYouMessage = `🔄 Thank you for providing feedback on the priority of this PR! Your input helps improve our prioritization system. 📈`;
+      }
+      
+      await octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: pullNumber,
+        body: thankYouMessage
+      });
+      
+      logger.info(`Added thank you comment for PR #${pullNumber}`);
     }
   } catch (error) {
     logger.error(`Error processing feedback for PR #${pullNumber}:`, error);
