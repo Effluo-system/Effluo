@@ -3,6 +3,10 @@ import { logger } from '../../utils/logger.ts';
 import { PullRequestService } from '../../services/pullRequest.service.ts';
 import { AppDataSource } from '../../server/server.ts';
 import { PrPriorityFeedback } from '../../entities/prPriorityFeedback.entity.ts';
+import path from 'path';
+import fs from 'fs';
+import { FindOptionsWhere , In } from 'typeorm';
+import { createObjectCsvWriter } from '../../utils/csvWriter.ts';
 
 interface PullRequestEventData {
   number: number;
@@ -44,6 +48,11 @@ interface RLModelResponse{
   success: boolean;
   message: string;
   modelUpdated?: boolean;
+}
+
+interface ExtendedPrPriorityFeedback extends PrPriorityFeedback {
+  processed_by_rl?: boolean;
+  rl_processed_at?: Date;
 }
 
 
@@ -575,6 +584,298 @@ export async function processPriorityFeedback(
       
       logger.info(`Added thank you comment for PR #${pullNumber}`);
     }
+
+    /**
+ * Process PR priority feedback data in batches for RL model training
+ * Tracks which records have been processed to avoid duplicate processing
+ * 
+ * @param batchSize Number of records to process in each batch (default: 50)
+ * @param maxBatches Maximum number of batches to process (optional)
+ * @returns Summary of the batch processing operation
+ */
+export async function processPriorityFeedbackBatches(
+  batchSize: number = 50,
+  maxBatches?: number
+): Promise<{ 
+  processedBatches: number, 
+  totalRecords: number, 
+  success: boolean 
+}> {
+  try {
+    logger.info(`Starting batch processing of PR priority feedback with batch size: ${batchSize}`);
+    
+    const feedbackRepository = AppDataSource.getRepository(PrPriorityFeedback);
+    
+    // Get total count of unprocessed records - use raw SQL to check for unprocessed records
+    const totalRecordsResult = await feedbackRepository.query(`
+      SELECT COUNT(*) FROM pr_priority_feedback 
+      WHERE priority_confirmed = true 
+      AND (processed_by_rl IS NULL OR processed_by_rl = false)
+    `);
+    
+    const totalRecords = parseInt(totalRecordsResult[0].count, 10);
+    
+    logger.info(`Found ${totalRecords} unprocessed confirmed priority feedback records`);
+    
+    if (totalRecords === 0) {
+      logger.info('No new confirmed priority feedback records to process');
+      return { processedBatches: 0, totalRecords: 0, success: true };
+    }
+    
+    // Calculate how many batches we need
+    const requiredBatches = Math.ceil(totalRecords / batchSize);
+    const batchesToProcess = maxBatches ? Math.min(requiredBatches, maxBatches) : requiredBatches;
+    
+    logger.info(`Will process ${batchesToProcess} batches`);
+    
+    let processedBatches = 0;
+    let totalProcessedRecords = 0;
+    
+    // Create temp directory if it doesn't exist
+    const tempDir = path.join(process.cwd(), 'temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir);
+    }
+    
+    // Process each batch
+    for (let i = 0; i < batchesToProcess; i++) {
+      // Fetch batch of unprocessed records using raw SQL
+      const records = await feedbackRepository.query(`
+        SELECT * FROM pr_priority_feedback
+        WHERE priority_confirmed = true
+        AND (processed_by_rl IS NULL OR processed_by_rl = false)
+        ORDER BY updated_at DESC
+        LIMIT ${batchSize}
+      `);
+      
+      if (records.length === 0) {
+        logger.info(`No more records to process, stopping at batch ${i}`);
+        break;
+      }
+      
+      logger.info(`Processing batch ${i + 1} with ${records.length} records`);
+      
+      // Generate CSV file for this batch
+      const batchFileName = `pr_priority_feedback_batch_${i + 1}_${Date.now()}.csv`;
+      const filePath = path.join(tempDir, batchFileName);
+      
+      await generateCsvFile(records, filePath);
+      
+      // Send to RL model
+      const modelResponse = await sendToRLModel(filePath);
+      
+      if (!modelResponse.success) {
+        logger.error(`Failed to process batch ${i + 1} with RL model: ${modelResponse.message}`);
+        // Continue with next batch even if this one failed
+      } else {
+        logger.info(`Successfully processed batch ${i + 1} with RL model`);
+        
+        // Mark these records as processed using raw SQL
+        const recordIds = records.map(record => record.id).join(',');
+        await feedbackRepository.query(`
+          UPDATE pr_priority_feedback
+          SET processed_by_rl = true, 
+              rl_processed_at = NOW()
+          WHERE id IN (${recordIds})
+        `);
+        
+        logger.info(`Marked ${records.length} records as processed by RL model`);
+        
+        if (modelResponse.modelUpdated) {
+          logger.info('RL model was updated based on feedback');
+        }
+        
+        totalProcessedRecords += records.length;
+      }
+      
+      processedBatches++;
+      
+      // Clean up the temporary file
+      try {
+        fs.unlinkSync(filePath);
+      } catch (error) {
+        logger.warn(`Failed to delete temporary file ${filePath}:`, error);
+      }
+    }
+    
+    logger.info(`Completed batch processing. Processed ${processedBatches} batches with ${totalProcessedRecords} records`);
+    
+    return {
+      processedBatches,
+      totalRecords: totalProcessedRecords,
+      success: true
+    };
+  } catch (error) {
+    logger.error('Error processing PR priority feedback batches:', error);
+    return {
+      processedBatches: 0,
+      totalRecords: 0,
+      success: false
+    };
+  }
+}
+
+/**
+ * Generate CSV file from PR priority feedback records
+ * 
+ * @param records Array of PrPriorityFeedback records
+ * @param filePath Path where CSV file should be saved
+ * @returns Promise resolving to true if successful
+ */
+async function generateCsvFile(records: any[], filePath: string): Promise<boolean> {
+  try {
+    const csvWriter = createObjectCsvWriter({
+      path: filePath,
+      header: [
+        { id: 'pr_number', title: 'PR_NUMBER' },
+        { id: 'predicted_priority', title: 'PREDICTED_PRIORITY' },
+        { id: 'predicted_priority_score', title: 'PREDICTED_PRIORITY_SCORE' },
+        { id: 'actual_priority', title: 'ACTUAL_PRIORITY' },
+        { id: 'title', title: 'TITLE' },
+        { id: 'owner', title: 'OWNER' },
+        { id: 'body', title: 'BODY' },
+        { id: 'comments', title: 'COMMENTS_COUNT' },
+        { id: 'total_additions', title: 'TOTAL_ADDITIONS' },
+        { id: 'total_deletions', title: 'TOTAL_DELETIONS' },
+        { id: 'changed_files_count', title: 'CHANGED_FILES_COUNT' },
+        { id: 'author_association', title: 'AUTHOR_ASSOCIATION' },
+        { id: 'created_at', title: 'CREATED_AT' },
+        { id: 'updated_at', title: 'UPDATED_AT' }
+      ]
+    });
+    
+    // Format dates and clean up data for CSV
+    const formattedRecords = records.map(record => ({
+      ...record,
+      created_at: record.created_at ? new Date(record.created_at).toISOString() : null,
+      updated_at: record.updated_at ? new Date(record.updated_at).toISOString() : null,
+      // Ensure body text doesn't break CSV format
+      body: record.body?.replace(/[\r\n,]/g, ' ').trim()
+    }));
+    
+    await csvWriter.writeRecords(formattedRecords);
+    logger.info(`Successfully generated CSV file: ${filePath}`);
+    return true;
+  } catch (error) {
+    logger.error(`Failed to generate CSV file:`, error);
+    throw error;
+  }
+}
+
+async function sendToRLModel(filePath: string): Promise<RLModelResponse> {
+  try {
+    logger.info(`Sending file ${filePath} to RL model`);
+    
+    const url = `${process.env.RL_MODEL_URL}/train`;
+    
+    // Read the file into a buffer
+    const fileBuffer = await fs.promises.readFile(filePath);
+    
+    // Create form data with the file
+    const formData = new FormData();
+    
+    // Create a Blob from the buffer and append it to FormData
+    // Use the file's base name as the filename
+    const fileName = path.basename(filePath);
+    const blob = new Blob([fileBuffer]);
+    formData.append('file', blob, fileName);
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status} - ${await response.text()}`);
+    }
+    
+    const result = await response.json();
+    
+    logger.info(`RL model response:`, result);
+    
+    return {
+      success: true,
+      message: result.message || 'Processing successful',
+      modelUpdated: result.modelUpdated || false
+    };
+  } catch (error) {
+    logger.error(`Failed to send file to RL model:`, error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Schedule periodic batch processing of PR priority feedback
+ * 
+ * @param intervalMinutes Interval in minutes between each batch processing run
+ * @param batchSize Number of records to process in each batch
+ * @param maxBatchesPerRun Maximum batches to process in each scheduled run
+ * @returns Function to stop the scheduled processing
+ */
+export function schedulePeriodicBatchProcessing(
+  intervalMinutes: number = 60,
+  batchSize: number = 50,
+  maxBatchesPerRun: number = 10
+): () => void {
+  logger.info(`Scheduling periodic batch processing every ${intervalMinutes} minutes`);
+  
+  const intervalId = setInterval(async () => {
+    logger.info(`Running scheduled batch processing`);
+    
+    const result = await processPriorityFeedbackBatches(batchSize, maxBatchesPerRun);
+    
+    if (result.success) {
+      logger.info(`Scheduled run completed: processed ${result.totalRecords} records in ${result.processedBatches} batches`);
+    }
+  }, intervalMinutes * 60 * 1000);
+  
+  // Return function to stop scheduling
+  return () => {
+    clearInterval(intervalId);
+    logger.info('Stopped scheduled batch processing');
+  };
+}
+
+/**
+ * Update PrPriorityFeedback table to add tracking fields
+ * Run this once before using the batch processing functions
+ */
+export async function updatePrPriorityFeedbackSchema(): Promise<boolean> {
+  try {
+    logger.info('Adding processing tracking fields to PrPriorityFeedback table');
+    
+    const queryRunner = AppDataSource.createQueryRunner();
+    await queryRunner.connect();
+    
+    try {
+      // Check if columns exist
+      const hasColumns = await queryRunner.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'pr_priority_feedback' 
+        AND column_name = 'processed_by_rl'
+      `);
+      
+      if (hasColumns.length === 0) {
+        // Add columns if they don't exist
+        await queryRunner.query(`
+          ALTER TABLE pr_priority_feedback 
+          ADD COLUMN IF NOT EXISTS processed_by_rl BOOLEAN DEFAULT FALSE,
+          ADD COLUMN IF NOT EXISTS rl_processed_at TIMESTAMP WITH TIME ZONE
+        `);
+        logger.info('Successfully added tracking columns to PrPriorityFeedback table');
+      } else {
+        logger.info('Tracking columns already exist in PrPriorityFeedback table');
+      }
+    } finally {
+      await queryRunner.release();
+    }
+    
+    return true;
+  }
   } catch (error) {
     logger.error(`Error processing feedback for PR #${pullNumber}:`, error);
   }
