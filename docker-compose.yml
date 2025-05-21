@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  effluo-main:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: effluo-main
+    env_file:
+      - .env.docker
+    ports:
+      - '3000:3000'
+      - '3001:3001'
+    depends_on:
+      - postgres
+    restart: on-failure
+
+  postgres:
+    image: postgres
+    container_name: effluo-db
+    environment:
+      POSTGRES_DB: Effluo
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    restart: always
+
+  effluo-web:
+    build:
+      context: ../Effluo-web
+      dockerfile: Dockerfile
+    container_name: effluo-web
+    env_file:
+      - .env
+    ports:
+      - '5173:5173'
+    restart: on-failure
+
+volumes:
+  pgdata:
