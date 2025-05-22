@@ -139,6 +139,12 @@ export async function analyzePullRequest2(
     const mainBranchContent = await fetchFileContent(octokit, owner, repo, filename, baseBranch);
     const prBranchContent = await fetchFileContent(octokit, owner, repo, filename, headBranch);
 
+    // Log the three types of code versions for debugging purposes
+    console.log(`Logging code versions for file: ${filename}`);
+    console.log("Base Version Content:\n", baseVersionContent);
+    console.log("Main Branch Content:\n", mainBranchContent);
+    console.log("PR Branch Content:\n", prBranchContent);
+
     if (status === "added" || status === "removed") {
       console.log(`Skipping ${filename} (${status}) - Not modified in both branches.`);
       continue;
@@ -159,6 +165,7 @@ export async function analyzePullRequest2(
 
   return analysisDetails;
 }
+
 
 async function getMergeBase(octokit: any, owner: string, repo: string, mainBranch: string, featureBranch: string): Promise<string> {
   try {
@@ -211,10 +218,11 @@ ${file.mainBranchContent}
 Return a JSON object with:
 {
 "conflict": "yes" or "no",
-"explanation": "brief reason with relevant code snippets"
+"explanation": "a comprehensive description including the reason and relevant code snippets of the places where the semantic conflict occurs"
 }
 
 Do not format the response with triple backticks (\` \`\`\` \`) or add \`json\` tags.
+Strictly adhere to all guidelines.
 `;
 
     try {
@@ -239,7 +247,7 @@ Do not format the response with triple backticks (\` \`\`\` \`) or add \`json\` 
         });
         continue;
       }
-
+      console.log(response);
       let responseData;
       try {
         responseData = JSON.parse(response.data.response);
