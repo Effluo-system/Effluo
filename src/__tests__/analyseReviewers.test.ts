@@ -223,27 +223,22 @@ describe('analyzeReviewers', () => {
       .spyOn(ReviewService, 'getReviewsMadeInTheCurrentWeek')
       .mockResolvedValue(mockReviews);
 
-    vi.mock(
-      import('../functions/analyse-reviewers/analyseReviewers'),
-      async (importOriginal) => {
-        const actual = await importOriginal();
-        return {
-          ...actual,
-          rankDevelopersByCategory: vi.fn().mockRejectedValue({
-            '894052335': {
-              backend: [
-                { user: 'PawaraGunathilaka', count: 4 },
-                { user: 'Navojith', count: 3 },
-              ],
-            },
-          }),
-          findMostSuitableDev: vi
-            .fn()
-            .mockRejectedValue({ '894052335': { backend: 'Navojith' } }),
-          fetchSummaryForEachRepo: vi.fn(),
-        };
-      }
-    );
+    vi.mock('../functions/analyse-reviewers/analyseReviewers', async (importOriginal) => {
+      const actual = await importOriginal();
+      return Object.assign({}, actual, {
+        rankDevelopersByCategory: vi.fn().mockRejectedValue({
+          '894052335': {
+            backend: [
+              { user: 'PawaraGunathilaka', count: 4 },
+              { user: 'Navojith', count: 3 },
+            ],
+          },
+        }),
+        findMostSuitableDev: vi.fn().mockRejectedValue({ '894052335': { backend: 'Navojith' } }),
+        fetchSummaryForEachRepo: vi.fn(),
+      });
+    });
+
 
     const result = await analyzeReviewers();
     expect(getReviewsMadeInTheCurrentWeekMock).toHaveBeenCalled();

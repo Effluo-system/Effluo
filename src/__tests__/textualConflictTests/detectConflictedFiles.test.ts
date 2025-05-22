@@ -16,8 +16,9 @@ vi.mock('fs', () => ({
 }));
 
 vi.mock('path', () => ({
-  join: vi.fn().mockImplementation((...args) => args.join('/')),
+  join: vi.fn().mockImplementation((...args: string[]) => args.join('/')),
 }));
+
 
 vi.mock('child_process', () => ({
   execSync: vi.fn(),
