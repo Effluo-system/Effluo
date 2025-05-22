@@ -1,4 +1,4 @@
-name: Check Build
+name: Check Build and Tests
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ on:
       - dev
 
 jobs:
-  build:
+  check:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,7 +20,13 @@ jobs:
           node-version: '18'
 
       - name: Install dependencies
-        run: npm install --force
+        run: npm install
+
+      - name: Lint code
+        run: npm run lint
 
       - name: Build the project
         run: npm run build
+
+      - name: Run tests
+        run: npm run test
