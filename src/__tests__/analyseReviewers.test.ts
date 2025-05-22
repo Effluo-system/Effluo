@@ -1,5 +1,121 @@
+// src/__tests__/analyzeReviewers.test.ts
 import { describe, expect, it, vi } from 'vitest';
+
+// Mock config/env BEFORE any imports that depend on it
+vi.mock('../config/env.ts', () => ({
+  env: {
+    appId: '123456',
+    privateKey: `-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEA1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN
+OPQRSTUVWXYZ1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP
+QRSTUVWXYZ1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQR
+STUVWXYZ1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRST
+UVWXYZ1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV
+WXYZ1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWX
+YZ1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
+1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ12
+34567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234
+567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456
+7890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ12345678
+90abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890
+abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890ab
+cdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcd
+efghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdef
+ghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefgh
+ijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefghij
+klmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefghijkl
+mnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefghijklmn
+opqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefghijklmnop
+qrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefghijklmnopqr
+stuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefghijklmnopqrst
+uvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefghijklmnopqrstuv
+wxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefghijklmnopqrstuvwx
+yzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefghijklmnopqrstuvwxyz
+-----END RSA PRIVATE KEY-----`,
+    webhookSecret: 'fake-webhook-secret',
+    port: '3000',
+  },
+}));
+
+// Mock jsonwebtoken
+vi.mock('jsonwebtoken', () => ({
+  default: {
+    sign: vi.fn(() => 'mockedJwtToken'),
+  },
+}));
+
+// Mock the JWT utility
+vi.mock('../utils/generateGithubJWT.ts', () => ({
+  jwtToken: 'mocked-jwt-token'
+}));
+
+// Mock the GitHub App config
+vi.mock('../config/appConfig.ts', () => ({
+  app: {
+    octokit: {
+      rest: {
+        // Mock any GitHub API methods you might need
+      }
+    }
+  }
+}));
+
+// Mock other dependencies
+vi.mock('../server/server.ts', () => ({
+  AppDataSource: {
+    getRepository: vi.fn(() => ({
+      findOne: vi.fn(),
+      find: vi.fn(),
+      save: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      remove: vi.fn(),
+      count: vi.fn(),
+      findAndCount: vi.fn(),
+    }))
+  }
+}));
+
+vi.mock('../utils/logger.ts', () => ({
+  logger: {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+  }
+}));
+
+// Mock services
+vi.mock('../services/review.service');
+vi.mock('../services/prReviewRequest.service');
+vi.mock('../services/issue.service');
+vi.mock('../services/userReviewSummary.service');
+
+// Mock RepoService - this was missing!
+vi.mock('../services/repo.service', () => ({
+  RepoService: {
+    getRepoById: vi.fn(),
+  }
+}));
+
+// Mock the analyzeReviewers functions
+vi.mock('../functions/analyse-reviewers/analyseReviewers', async () => {
+  const actual = await vi.importActual<typeof import('../functions/analyse-reviewers/analyseReviewers')>('../functions/analyse-reviewers/analyseReviewers');
+  return {
+    ...actual,
+    rankDevelopersByCategory: vi.fn(),
+    findMostSuitableDev: vi.fn(),
+  };
+});
+
+vi.mock('../functions/analyse-reviewers/pipelines/createAssignReviewerPipeline.ts', () => ({
+  pushWorkflowFilesToGithub: vi.fn().mockResolvedValue(undefined)
+}));
+
+// Now import everything after mocks are set up
 import { ReviewService } from '../services/review.service';
+import { RepoService } from '../services/repo.service';
 import {
   analyzeReviewers,
   areSummariesEqual,
@@ -8,6 +124,7 @@ import {
 } from '../functions/analyse-reviewers/analyseReviewers';
 import { PRReviewRequestService } from '../services/prReviewRequest.service';
 import { IssueService } from '../services/issue.service';
+import { UserReviewSummaryService } from '../services/userReviewSummary.service';
 
 describe('analyzeReviewers', () => {
   const repoData = {
@@ -183,7 +300,7 @@ describe('analyzeReviewers', () => {
           repository: {
             id: '894052335',
             full_name: 'Dinal-Senadheera/Effluo-Playground',
-            url: 'https://github.com/Dinal-Senadheera/Effluo-Playground',
+            url: 'https://github.com/Dinal-Senadheera/Effluo-Playground/pull/84',
           },
           url: 'https://github.com/Dinal-Senadheera/Effluo-Playground/pull/84',
           labels: ['backend'],
@@ -219,31 +336,51 @@ describe('analyzeReviewers', () => {
       },
     ];
 
+    // Mock repo data that would be returned by getRepoById
+    const mockRepo = {
+      id: '894052335',
+      full_name: 'Dinal-Senadheera/Effluo-Playground',
+      url: 'https://github.com/Dinal-Senadheera/Effluo-Playground',
+      owner: {
+        id: '1',
+        login: 'Dinal-Senadheera',
+        url: 'https://github.com/Dinal-Senadheera',
+        repos: []
+      },
+      user_review_summary: null,
+      issues: null,
+      mergeResolutions: undefined
+    } as any; 
+
+
+
     const getReviewsMadeInTheCurrentWeekMock = vi
       .spyOn(ReviewService, 'getReviewsMadeInTheCurrentWeek')
       .mockResolvedValue(mockReviews);
 
-    vi.mock('../functions/analyse-reviewers/analyseReviewers', async (importOriginal) => {
-      const actual = await importOriginal();
-      return Object.assign({}, actual, {
-        rankDevelopersByCategory: vi.fn().mockRejectedValue({
-          '894052335': {
-            backend: [
-              { user: 'PawaraGunathilaka', count: 4 },
-              { user: 'Navojith', count: 3 },
-            ],
-          },
-        }),
-        findMostSuitableDev: vi.fn().mockRejectedValue({ '894052335': { backend: 'Navojith' } }),
-        fetchSummaryForEachRepo: vi.fn(),
-      });
-    });
+    // Mock RepoService.getRepoById to return a mock repo
+    const getRepoByIdMock = vi
+      .spyOn(RepoService, 'getRepoById')
+      .mockResolvedValue(mockRepo);
 
+    // Mock the functions properly
+    const rankDevelopersByCategoryMock = vi.mocked(rankDevelopersByCategory);
+    rankDevelopersByCategoryMock.mockReturnValue(ranks);
+
+    const findMostSuitableDevMock = vi.mocked(findMostSuitableDev);
+    findMostSuitableDevMock.mockResolvedValue(mostSuitable);
 
     const result = await analyzeReviewers();
+    
     expect(getReviewsMadeInTheCurrentWeekMock).toHaveBeenCalled();
+    expect(getRepoByIdMock).toHaveBeenCalledWith('894052335');
     expect(result).toBeTruthy();
+    
+    // Clean up
     getReviewsMadeInTheCurrentWeekMock.mockRestore();
+    getRepoByIdMock.mockRestore();
+    rankDevelopersByCategoryMock.mockClear();
+    findMostSuitableDevMock.mockClear();
   });
 
   it('should run areSummariesEqual()', async () => {
@@ -297,12 +434,12 @@ describe('analyzeReviewers', () => {
   });
 
   it('should run findMostSuitableDev()', async () => {
-    const result = findMostSuitableDev(ranks);
+    const result = await findMostSuitableDev(ranks);
     expect(result).toBeTruthy();
   });
 
   it('should run findMostSuitableDev() and return {}', async () => {
-    const result = findMostSuitableDev(ranks);
+    const result = await findMostSuitableDev(ranks);
     expect(result).toBeDefined();
   });
 });
