@@ -60,7 +60,7 @@ export async function getResolution(
     );
 
     if (conflictingFilenames.length === 0) {
-      logger.info('No conflicting files found');
+      logger.info(`No conflicting files found in PR #${pullNumber}`);
       return;
     }
 

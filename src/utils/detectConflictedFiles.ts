@@ -6,7 +6,7 @@ import { Base64 } from 'js-base64';
 import * as path from 'path';
 import { logger } from './logger.ts';
 
-function executeGitCommand(command: string, cwd: string): string {
+export function executeGitCommand(command: string, cwd: string): string {
   try {
     return execSync(command, { cwd, encoding: 'utf8' }).toString();
   } catch (error) {
@@ -63,7 +63,10 @@ async function setupLocalRepo(
   }
 }
 
-function getGitConflictedFiles(repoPath: string, headBranch: string): string[] {
+export function getGitConflictedFiles(
+  repoPath: string,
+  headBranch: string
+): string[] {
   try {
     try {
       executeGitCommand(`git merge origin/${headBranch}`, repoPath);
@@ -92,7 +95,7 @@ function getGitConflictedFiles(repoPath: string, headBranch: string): string[] {
   }
 }
 
-function cleanupLocalRepo(repoPath: string): void {
+export function cleanupLocalRepo(repoPath: string): void {
   try {
     fs.rmSync(repoPath, { recursive: true, force: true });
   } catch (error) {
@@ -123,7 +126,7 @@ async function getFileContent(
   }
 }
 
-function isBinaryFile(filename: string): boolean {
+export function isBinaryFile(filename: string): boolean {
   const binaryExtensions = [
     '.png',
     '.jpg',
@@ -152,7 +155,7 @@ function isBinaryFile(filename: string): boolean {
   return binaryExtensions.some((ext) => filename.toLowerCase().endsWith(ext));
 }
 
-function isJsonFile(filename: string): boolean {
+export function isJsonFile(filename: string): boolean {
   return (
     filename.endsWith('.json') ||
     filename === '.eslintrc' ||
@@ -348,15 +351,14 @@ export async function extractConflictedFiles(
       pull_number: pullNumber,
     });
 
-    const modifiedFiles = files.filter((file) => file.status === 'modified');
+    const modifiedFiles = files.filter(
+      (file) => file.status === 'modified' || file.status === 'added'
+    );
+
     if (modifiedFiles.length === 0) {
-      logger.info('No modified files found in PR');
+      logger.info(`No modified files found in PR #${pullNumber}`);
       return [];
     }
-
-    logger.info(
-      `Checking ${modifiedFiles.length} modified files for conflicts`
-    );
 
     const baseBranch = pr.base.ref;
     const headBranch = pr.head.ref;
@@ -374,7 +376,14 @@ export async function extractConflictedFiles(
 
     if (success) {
       const allConflictedFiles = getGitConflictedFiles(repoPath, headBranch);
-      logger.info(`Git detected ${allConflictedFiles.length} conflicted files`);
+      logger.info(
+        `Git detected ${allConflictedFiles.length} conflicted files in PR #${pullNumber}`
+      );
+
+      logger.info(
+        'Modified files:',
+        modifiedFiles.map((file) => file.filename)
+      );
 
       const modifiedFilePaths = modifiedFiles.map((file) => file.filename);
       const conflictingFiles = allConflictedFiles.filter((file) =>
@@ -382,7 +391,7 @@ export async function extractConflictedFiles(
       );
 
       logger.info(
-        `Found ${conflictingFiles.length} modified files with conflicts using Git`
+        `Found ${conflictingFiles.length} modified files with conflicts using Git for PR #${pullNumber}`
       );
 
       cleanupLocalRepo(localRepoPath);
