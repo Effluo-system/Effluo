@@ -112,10 +112,10 @@ app.webhooks.on(['issue_comment.created'], async ({ octokit, payload }) => {
 
     //check if the comment is an priority feedback comment
     const isPriorityFeedbackComment = 
-        currentComment.body?.toUpperCase().includes('CONFIRM') ||
-        currentComment.body?.toUpperCase().includes('HIGH') ||
-        currentComment.body?.toUpperCase().includes('MEDIUM') ||
-        currentComment.body?.toUpperCase().includes('LOW')
+        currentComment.body?.toUpperCase().startsWith('CONFIRM') ||
+        currentComment.body?.toUpperCase().startsWith('HIGH') ||
+        currentComment.body?.toUpperCase().startsWith('MEDIUM') ||
+        currentComment.body?.toUpperCase().startsWith('LOW')
     
 
     if (isPriorityFeedbackComment) {

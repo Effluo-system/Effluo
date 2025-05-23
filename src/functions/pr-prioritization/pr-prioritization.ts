@@ -56,7 +56,6 @@ interface ExtendedPrPriorityFeedback extends PrPriorityFeedback {
 /**
  * Extract comprehensive PR data when a PR is created or updated
  *
- *
  * @param octokit Octokit instance
  * @param owner Repository owner
  * @param repo Repository name
@@ -103,30 +102,20 @@ export async function extractPullRequestData(
         repo,
         pull_number: pullNumber,
       });
-    const { data: requestedReviewers } =
-      await octokit.rest.pulls.listRequestedReviewers({
-        owner,
-        repo,
-        pull_number: pullNumber,
-      });
 
     // Map files to required structure
-    const changedFiles = files.map((file) => ({
     const changedFiles = files.map((file) => ({
       filename: file.filename,
       status: file.status,
       additions: file.additions,
       deletions: file.deletions,
       changes: file.changes,
-      changes: file.changes,
     }));
 
     // Map comments
     const commentData = comments.map((comment) => ({
-    const commentData = comments.map((comment) => ({
       author: comment.user?.login || 'unknown',
       body: comment.body || '',
-      createdAt: comment.created_at,
       createdAt: comment.created_at,
     }));
 
@@ -134,8 +123,6 @@ export async function extractPullRequestData(
 
     // Extract reviewers' logins
     const reviewers = [
-      ...(requestedReviewers.users?.map((user) => user.login) || []),
-      ...(requestedReviewers.teams?.map((team) => team.name) || []),
       ...(requestedReviewers.users?.map((user) => user.login) || []),
       ...(requestedReviewers.teams?.map((team) => team.name) || []),
     ];
@@ -148,22 +135,16 @@ export async function extractPullRequestData(
       author: {
         login: pr.user?.login || 'unknown',
         association: pr.author_association,
-        association: pr.author_association,
       },
-      labels: pr.labels.map((label) =>
-        typeof label === 'string' ? label : label.name || ''
-      ),
       labels: pr.labels.map((label) =>
         typeof label === 'string' ? label : label.name || ''
       ),
       base: {
         ref: pr.base.ref,
         sha: pr.base.sha,
-        sha: pr.base.sha,
       },
       head: {
         ref: pr.head.ref,
-        sha: pr.head.sha,
         sha: pr.head.sha,
       },
       changedFiles,
@@ -171,13 +152,11 @@ export async function extractPullRequestData(
       reviewers,
       createdAt: pr.created_at,
       updatedAt: pr.updated_at,
-      updatedAt: pr.updated_at,
     };
 
     logger.info(`Successfully extracted data for PR #${pullNumber}`, {
       title: prData.title,
       filesCount: prData.changedFiles.length,
-      commentsCount: prData.comments.length,
       commentsCount: prData.comments.length,
     });
 
@@ -190,7 +169,6 @@ export async function extractPullRequestData(
 
 /**
  * Convert PullRequestEventData to the format expected by the PR Prioritizer model
- *
  *
  * @param prData PR data in GitHub format
  * @returns Transformed data in the format expected by prioritizer
@@ -206,39 +184,14 @@ export function convertToPrioritizerFormat(prData: PullRequestEventData): any {
     0
   );
 
-  const totalAdditions = prData.changedFiles.reduce(
-    (sum, file) => sum + file.additions,
-    0
-  );
-  const totalDeletions = prData.changedFiles.reduce(
-    (sum, file) => sum + file.deletions,
-    0
-  );
-
   // Combine PR description and all comments into a single body text for analysis
-  const commentBodies = prData.comments
-    .map((comment) => comment.body)
-    .join('\n\n');
   const commentBodies = prData.comments
     .map((comment) => comment.body)
     .join('\n\n');
   const fullBody = `${prData.description || ''}\n\n${commentBodies}`;
 
-
   // Create the transformed data object
   return {
-    pull_requests: [
-      {
-        id: `PR${prData.number}`,
-        title: prData.title,
-        body: fullBody,
-        author_association: prData.author.association,
-        comments: prData.comments.length,
-        additions: totalAdditions,
-        deletions: totalDeletions,
-        changed_files: prData.changedFiles.length,
-      },
-    ],
     pull_requests: [
       {
         id: `PR${prData.number}`,
@@ -256,7 +209,6 @@ export function convertToPrioritizerFormat(prData: PullRequestEventData): any {
 
 /**
  * Process PR data by sending it to Flask service for prioritization analysis
- *
  *
  * @param prData PR data to be processed
  * @returns Processing result
@@ -290,13 +242,9 @@ export async function sendPRDataForProcessing(
       throw new Error(
         `HTTP error! status: ${response.status} - ${await response.text()}`
       );
-      throw new Error(
-        `HTTP error! status: ${response.status} - ${await response.text()}`
-      );
     }
 
     const result = await response.json();
-
 
     // Extract the priority and confidence from the response
     let priority = 'uncertain';
@@ -319,7 +267,7 @@ export async function sendPRDataForProcessing(
         .map((comment) => comment.body)
         .join('\n\n');
       const fullBody = `${prData.description || ''}\n\n${commentBodies}`;
-      logger.info(`Full body: ${fullBody}`);
+      logger.debug(`Full body: ${fullBody}`);
 
       newPriorityPrediction.pr_number = prData.number;
       newPriorityPrediction.predicted_priority =
@@ -348,10 +296,8 @@ export async function sendPRDataForProcessing(
       );
     }
 
-
     logger.info(`Successfully processed PR #${prData.number}`, {
       priority: priority,
-      score: score,
       score: score,
     });
 
@@ -361,7 +307,6 @@ export async function sendPRDataForProcessing(
     return {
       status: 'success',
       priority: priority,
-      score: score,
       score: score,
     };
   } catch (error) {
@@ -517,21 +462,6 @@ export async function createPriorityComment(
       default:
         priorityEmoji = '❓';
     }
-    // Set emoji based on priority
-    let priorityEmoji = '';
-    switch (priority) {
-      case 'high':
-        priorityEmoji = '🔴';
-        break;
-      case 'medium':
-        priorityEmoji = '🟠';
-        break;
-      case 'low':
-        priorityEmoji = '🟢';
-        break;
-      default:
-        priorityEmoji = '❓';
-    }
 
     // Create deployment message
     const deploymentMessages: Record<string, string> = {
@@ -569,9 +499,7 @@ _Example reply: "Medium"_
       repo,
       issue_number: pullNumber,
       body: commentBody,
-      body: commentBody,
     });
-
 
     logger.info(`Successfully created priority comment for PR #${pullNumber}`);
     return true;
@@ -602,17 +530,10 @@ export async function prioritizePullRequest(
       repo,
       pullNumber
     );
-    const prData = await extractPullRequestData(
-      octokit,
-      owner,
-      repo,
-      pullNumber
-    );
     if (!prData) {
       logger.error(`Failed to extract data for PR #${pullNumber}`);
       return;
     }
-
 
     // Step 2: Send for processing
     const result = await sendPRDataForProcessing(prData);
@@ -621,15 +542,9 @@ export async function prioritizePullRequest(
       return;
     }
 
-
     // Step 3: Add comment with priority
     if (result.priority && result.score) {
       await createPriorityComment(
-        octokit,
-        owner,
-        repo,
-        pullNumber,
-        result.priority,
         octokit,
         owner,
         repo,
@@ -812,7 +727,6 @@ export async function processPriorityFeedback(
         break;
       }
 
-      // Don't check for other patterns - only explicit confirmation or correction
     }
 
     // Only process if feedback was found after the bot comment
