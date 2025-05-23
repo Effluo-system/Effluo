@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: effluo-web
+  namespace: effluo
+  labels:
+    app: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: navojith/effluo-web:latest
+          ports:
+            - containerPort: 5173
+          envFrom:
+            - secretRef:
+                name: effluo-web-env
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: effluo-web
+  namespace: effluo
+spec:
+  selector:
+    app: web
+  ports:
+    - port: 5173
+      targetPort: 5173
+      protocol: TCP
+  type: NodePort
