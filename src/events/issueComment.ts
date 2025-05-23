@@ -1,5 +1,5 @@
 import { app } from '../config/appConfig.ts';
-import { prioritizePullRequest } from '../functions/pr-prioritization/pr-prioritization.ts';
+import { prioritizePullRequest , processPriorityFeedback } from '../functions/pr-prioritization/pr-prioritization.ts';
 import {
   checkForCommitResolutionCommands,
   resolveAllConflicts,
@@ -88,31 +88,52 @@ app.webhooks.on(['issue_comment.created'], async ({ octokit, payload }) => {
       issue_number: issueNumber,
     });
 
-    // Identify bot comments containing PR priority details
-    const botComments = comments.filter(
-      (comment) =>
-        comment.user?.type === 'Bot' &&
-        comment.body?.includes('PR Priority:') &&
-        comment.body?.includes('Priority Score:') &&
-        comment.body?.includes('Deployment Note:')
-    );
+    // // Identify bot comments containing PR priority details
+    // const botComments = comments.filter(
+    //   (comment) =>
+    //     comment.user?.type === 'Bot' &&
+    //     comment.body?.includes('PR Priority:') &&
+    //     comment.body?.includes('Priority Score:') &&
+    //     comment.body?.includes('Deployment Note:')
+    // );
 
-    // Delete old bot comments
-    for (const comment of botComments) {
-      await octokit.rest.issues.deleteComment({
-        owner,
-        repo,
-        comment_id: comment.id,
-      });
-      logger.info(`Deleted old bot comment: ${comment.id}`);
+    // // Delete old bot comments
+    // for (const comment of botComments) {
+    //   await octokit.rest.issues.deleteComment({
+    //     owner,
+    //     repo,
+    //     comment_id: comment.id,
+    //   });
+    //   logger.info(`Deleted old bot comment: ${comment.id}`);
+    // }
+
+    //get the current comment
+    const currentComment = payload.comment;
+
+    //check if the comment is an priority feedback comment
+    const isPriorityFeedbackComment = 
+        currentComment.body?.toUpperCase().startsWith('CONFIRM') ||
+        currentComment.body?.toUpperCase().startsWith('HIGH') ||
+        currentComment.body?.toUpperCase().startsWith('MEDIUM') ||
+        currentComment.body?.toUpperCase().startsWith('LOW')
+    
+
+    if (isPriorityFeedbackComment) {
+      logger.info('Priority feedback comment found. Processing...');
+
+      await processPriorityFeedback(
+        octokit as any,
+        payload.repository.owner.login,
+        payload.repository.name,
+        payload.issue.number)
+    } else{
+      await prioritizePullRequest(
+        octokit as any,
+        payload.repository.owner.login,
+        payload.repository.name,
+        payload.issue.number
+      );
     }
-
-    await prioritizePullRequest(
-      octokit as any,
-      payload.repository.owner.login,
-      payload.repository.name,
-      payload.issue.number
-    );
   } catch (error) {
     logger.error(`Error processing comment webhook: ${error}`);
   }

@@ -11,6 +11,7 @@ import createIssueTableMigration from './migrations/create-issue-table.migration
 import { PRReviewRequest } from '../entities/prReviewRequest.entity.ts';
 import { PrFeedback } from '../entities/prFeedback.entity.ts';
 import {PrConflictAnalysis} from '../entities/prConflictAnalysis.entity.ts'
+import { PrPriorityFeedback } from '../entities/prPriorityFeedback.entity.ts';
 
 dotenv.config();
 
@@ -21,8 +22,9 @@ const dbConfig: DataSourceOptions = {
   username: process.env.DB_USERNAME,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  synchronize: true,
-  migrations: [createIssueTableMigration],
+  synchronize: false,
+  migrations: [
+    createIssueTableMigration],
   logging: false,
   entities: [
     PullRequest,
@@ -34,7 +36,8 @@ const dbConfig: DataSourceOptions = {
     PRReviewRequest,
     PrFeedback,
     MergeResolution,
-    PrConflictAnalysis
+    PrConflictAnalysis,
+    PrPriorityFeedback
   ],
 };
 

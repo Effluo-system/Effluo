@@ -17,6 +17,7 @@ import { PrFeedback } from '../entities/prFeedback.entity.ts';
 import { prioritizePullRequest } from '../functions/pr-prioritization/pr-prioritization.ts';
 import { PRReviewRequestService } from '../services/prReviewRequest.service.ts';
 import { PrConflictAnalysisService } from '../services/prConflictAnalysis.service.ts';
+import {processPriorityFeedback} from '../functions/pr-prioritization/pr-prioritization.ts';
 
 app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
   logger.info(`Received a pull request event for #${payload.pull_request.number}`);
@@ -237,36 +238,6 @@ app.webhooks.on('pull_request.closed', async ({ octokit, payload }) => {
 app.webhooks.on('pull_request', async ({ octokit, payload }) => {
   logger.info(`Received a pull request event for #${payload.pull_request.number}`);
   try {
-    const owner = payload.repository.owner.login;
-    const repo = payload.repository.name;
-    const PRNumber = payload.pull_request.number;
-
-    // Fetch all comments on the PR
-    const { data: comments } = await octokit.rest.issues.listComments({
-      owner,
-      repo,
-      issue_number: PRNumber,
-    });
-
-    // Identify bot comments containing PR priority details
-    const botComments = comments.filter(
-      (comment) =>
-        comment.user?.type === 'Bot' &&
-        comment.body?.includes('PR Priority:') &&
-        comment.body?.includes('Priority Score:') &&
-        comment.body?.includes('Deployment Note:')
-    );
-
-    // Delete old bot comments
-    for (const comment of botComments) {
-      await octokit.rest.issues.deleteComment({
-        owner,
-        repo,
-        comment_id: comment.id,
-      });
-      logger.info(`Deleted old bot comment: ${comment.id}`);
-    }
-
     await prioritizePullRequest(
       octokit as any,
       payload.repository.owner.login,
@@ -281,4 +252,6 @@ app.webhooks.on('pull_request', async ({ octokit, payload }) => {
       logger.error(error);
     }
   }
-});
+
+  }
+);
