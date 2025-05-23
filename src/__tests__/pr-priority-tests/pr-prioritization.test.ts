@@ -1,8 +1,8 @@
-// src/__tests__/analyzeReviewers.test.ts
-import { describe, expect, it, vi } from 'vitest';
+// src/__tests__/semantic-tests/fetchFileContent.test.ts
+import { describe, it, expect, vi } from 'vitest';
 
 // Mock config/env BEFORE any imports that depend on it
-vi.mock('../config/env.ts', () => ({
+vi.mock('../../config/env.ts', () => ({
   env: {
     appId: '123456',
     privateKey: `-----BEGIN RSA PRIVATE KEY-----
@@ -45,12 +45,12 @@ vi.mock('jsonwebtoken', () => ({
 }));
 
 // Mock the JWT utility
-vi.mock('../utils/generateGithubJWT.ts', () => ({
+vi.mock('../../utils/generateGithubJWT.ts', () => ({
   jwtToken: 'mocked-jwt-token'
 }));
 
 // Mock the GitHub App config
-vi.mock('../config/appConfig.ts', () => ({
+vi.mock('../../config/appConfig.ts', () => ({
   app: {
     octokit: {
       rest: {
@@ -60,49 +60,20 @@ vi.mock('../config/appConfig.ts', () => ({
   }
 }));
 
-// Mock other dependencies
-vi.mock('../server/server.ts', () => ({
+// Mock other dependencies that might be imported by the semantic conflict detection module
+vi.mock('../../server/server.ts', () => ({
   AppDataSource: {
-    getRepository: vi.fn(() => ({
-      findOne: vi.fn(),
-      find: vi.fn(),
-      save: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-      remove: vi.fn(),
-      count: vi.fn(),
-      findAndCount: vi.fn(),
-    }))
+    getRepository: vi.fn()
   }
 }));
 
-vi.mock('../utils/logger.ts', () => ({
+vi.mock('../../utils/logger.ts', () => ({
   logger: {
     info: vi.fn(),
     error: vi.fn(),
     warn: vi.fn(),
     debug: vi.fn(),
   }
-}));
-
-// Mock services
-vi.mock('../services/prReviewRequest.service');
-vi.mock('../services/issue.service');
-
-
-// Mock the pr-prioirty functions
-vi.mock('../functions/pr-prioritization/pr-prioritization', async () => {
-  const actual = await vi.importActual<typeof import('../../functions/pr-prioritization/pr-prioritization')>('../functions/pr-prioritization/pr-prioritization');
-  return {
-    ...actual,
-    rankDevelopersByCategory: vi.fn(),
-    findMostSuitableDev: vi.fn(),
-  };
-});
-
-vi.mock('../functions/pr-prioritization/pr-prioritization.ts', () => ({
-  pushWorkflowFilesToGithub: vi.fn().mockResolvedValue(undefined)
 }));
 
 
@@ -164,7 +135,7 @@ vi.mock('../utils/logger', () => ({
 }));
 
 // Mock fetch API
-// global.fetch = vi.fn();
+global.fetch = vi.fn();
 
 describe('PR Prioritization Functions', () => {
   let mockOctokit: any;
@@ -172,14 +143,6 @@ describe('PR Prioritization Functions', () => {
   beforeEach(() => {
     // Reset mocks before each test
     vi.resetAllMocks();
-
-  global.fetch = vi.fn(() =>
-    Promise.resolve({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve({ status: 'success', result: 'prioritized' }),
-    } as Response)
-  );
     
     // Create a mock Octokit instance
     mockOctokit = {
