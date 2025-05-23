@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: effluo-main
+  namespace: effluo
+  labels:
+    app: main
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: main
+  template:
+    metadata:
+      labels:
+        app: main
+    spec:
+      containers:
+        - name: main
+          image: navojith/effluo-main:latest
+          ports:
+            - containerPort: 3000
+            - containerPort: 3001
+          envFrom:
+            - secretRef:
+                name: effluo-main-env
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: effluo-main
+  namespace: effluo
+spec:
+  selector:
+    app: main
+  ports:
+    - name: webhook-listener
+      port: 3000
+      targetPort: 3000
+      protocol: TCP
+    - name: web-server
+      port: 3001
+      targetPort: 3001
+      protocol: TCP
+  type: NodePort
