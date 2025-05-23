@@ -27,3 +27,11 @@ dist-ssr
 
 #private files
 private
+
+# Ignore Terraform files
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+*.tfvars
+*.tfvars.json
+.terraform.tfstate.lock.info
