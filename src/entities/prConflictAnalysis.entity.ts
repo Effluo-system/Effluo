@@ -8,10 +8,10 @@ export class PrConflictAnalysis {
   @Column('int')  
   pr_number!: number;
 
-  @Column('varchar', { length: 255 })
+  @Column('varchar', { length: 255, nullable: true }) 
   repository_name!: string;
 
-  @Column('varchar', { length: 255 }) 
+  @Column('varchar', { length: 255, nullable: true  }) 
   repository_owner!: string;
 
   @Column('boolean', { default: false }) 

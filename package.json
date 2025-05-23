@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node dist/app.js",
     "build": "tsc",
-    "lint": "standard",
+    "lint": "standard \"src/**/*.ts\"",
     "test": "vitest",
     "test:coverage": "vitest run --coverage",
     "dev": "nodemon --watch src --ext ts --exec \"node --loader ts-node/esm src/app.ts\"",
@@ -25,7 +25,7 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.6.3",
     "vite": "^4.5.3",
-    "vitest": "^3.0.9"
+    "vitest": "^0.34.6"
   },
   "dependencies": {
     "@octokit/app": "^15.1.1",
