@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 import * as prModule from '../functions/pr-prioritization/pr-prioritization';
 import { 
   extractPullRequestData, 
@@ -54,6 +54,33 @@ vi.mock('../utils/logger', () => ({
     error: vi.fn(),
   },
 }));
+
+
+beforeAll(() => {
+  // Set up mock environment variables for testing
+  process.env.GITHUB_APP_ID = 'test-app-id';
+  process.env.GITHUB_PRIVATE_KEY = `-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEA1234567890abcdef1234567890abcdef1234567890abcdef
+1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+-----END RSA PRIVATE KEY-----`;
+  
+  process.env.NODE_ENV = 'test';
+});
 
 // Mock fetch API
 global.fetch = vi.fn();
