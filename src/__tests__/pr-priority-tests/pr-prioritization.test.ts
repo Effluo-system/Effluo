@@ -164,7 +164,7 @@ vi.mock('../utils/logger', () => ({
 }));
 
 // Mock fetch API
-global.fetch = vi.fn();
+// global.fetch = vi.fn();
 
 describe('PR Prioritization Functions', () => {
   let mockOctokit: any;
@@ -172,6 +172,14 @@ describe('PR Prioritization Functions', () => {
   beforeEach(() => {
     // Reset mocks before each test
     vi.resetAllMocks();
+
+  global.fetch = vi.fn(() =>
+    Promise.resolve({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ status: 'success', result: 'prioritized' }),
+    } as Response)
+  );
     
     // Create a mock Octokit instance
     mockOctokit = {
