@@ -7,6 +7,7 @@ import './events/onError.ts';
 import './events/pullRequest.ts';
 import './events/push.ts';
 import './events/reviewPR.ts';
+import './events/buildData.ts';
 import { analyzeReviewersCron } from './functions/analyse-reviewers/analyseReviewers.ts';
 import authRouter from './routes/auth.routes.ts';
 import consoleRouter from './routes/console.routes.ts';

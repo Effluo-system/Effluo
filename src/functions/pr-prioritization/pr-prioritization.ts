@@ -119,7 +119,7 @@ export async function extractPullRequestData(
       createdAt: comment.created_at,
     }));
 
-    logger.info('extracted comments : ', commentData);
+    logger.debug('extracted comments : ', commentData);
 
     // Extract reviewers' logins
     const reviewers = [
@@ -437,6 +437,16 @@ export async function createPriorityComment(
       logger.info(`Deleted old bot comment: ${comment.id}`);
     }
 
+    if (score < 50) {
+      priority = 'low';
+    }
+    if (score > 50 && score < 80) {
+      priority = 'medium';
+    }
+    if (score > 80) {
+      priority = 'high';
+    }
+
     // Set emoji based on priority
     let priorityEmoji = '';
     switch (priority) {
@@ -552,6 +562,100 @@ export async function prioritizePullRequest(
   }
 }
 
+// export async function processPriorityFeedback(
+//   octokit: Octokit,
+//   owner: string,
+//   repo: string,
+//   pullNumber: number
+// ) {
+//   try {
+//     logger.info(`Processing feedback for PR #${pullNumber}`);
+//     const { data: comments } = await octokit.rest.issues.listComments({
+//       owner,
+//       repo,
+//       issue_number: pullNumber,
+//     });
+
+//     let feedbackReceived = false;
+//     let feedbackType = '';
+
+//     for (const comment of comments) {
+//       const commentText = comment.body?.trim().toUpperCase();
+//       const feedbackRepository =
+//         AppDataSource.getRepository(PrPriorityFeedback);
+//       const feedback = await feedbackRepository.findOneBy({
+//         pr_number: pullNumber,
+//       });
+
+//       if (commentText?.includes('CONFIRM')) {
+//         logger.info(`Feedback confirmed for PR #${pullNumber}`);
+//         const priority_confirmed = true;
+
+//         const actual_priority = feedback?.predicted_priority;
+//         if (feedback) {
+//           await feedbackRepository.update(feedback.id, {
+//             priority_confirmed,
+//             actual_priority,
+//           });
+//           logger.info(
+//             `Updated feedback for PR #${pullNumber}: confirmed priority`
+//           );
+//           feedbackReceived = true;
+//           feedbackType = 'confirmed';
+//         } else {
+//           logger.warn(`No feedback found for PR #${pullNumber}`);
+//         }
+//       }
+
+//       if (
+//         commentText === 'HIGH' ||
+//         commentText === 'MEDIUM' ||
+//         commentText === 'LOW'
+//       ) {
+//         logger.info(`Feedback received for PR #${pullNumber}: ${commentText}`);
+//         const actual_priority = commentText as ValidPriority;
+//         const predicted_priority = feedback?.predicted_priority;
+
+//         if (feedback) {
+//           const priority_confirmed = true;
+//           await feedbackRepository.update(feedback.id, {
+//             predicted_priority,
+//             priority_confirmed,
+//             actual_priority,
+//           });
+//           logger.info(
+//             `Updated feedback for PR #${pullNumber}: actual priority set to ${actual_priority}`
+//           );
+//           feedbackReceived = true;
+//           feedbackType = 'actual_priority';
+//         } else {
+//           logger.warn(`No feedback found for PR #${pullNumber}`);
+//         }
+//       }
+//     }
+//     if (feedbackReceived) {
+//       let thankYouMessage = '';
+
+//       if (feedbackType === 'confirmed') {
+//         thankYouMessage = `✅ Thank you for confirming the priority assessment for this PR! Your feedback helps improve our prioritization system. 📊`;
+//       } else {
+//         thankYouMessage = `🔄 Thank you for providing feedback on the priority of this PR! Your input helps improve our prioritization system. 📈`;
+//       }
+
+//       await octokit.rest.issues.createComment({
+//         owner,
+//         repo,
+//         issue_number: pullNumber,
+//         body: thankYouMessage,
+//       });
+
+//       logger.info(`Added thank you comment for PR #${pullNumber}`);
+//     }
+//   } catch (error) {
+//     logger.error(`Error processing feedback for PR #${pullNumber}:`, error);
+//   }
+// }
+
 export async function processPriorityFeedback(
   octokit: Octokit,
   owner: string,
@@ -566,80 +670,152 @@ export async function processPriorityFeedback(
       issue_number: pullNumber,
     });
 
-    let feedbackReceived = false;
-    let feedbackType = '';
+    // Sort comments by creation date to process them chronologically
+    const sortedComments = comments.sort((a, b) => 
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
 
-    for (const comment of comments) {
-      const commentText = comment.body?.trim().toUpperCase();
-      const feedbackRepository =
-        AppDataSource.getRepository(PrPriorityFeedback);
-      const feedback = await feedbackRepository.findOneBy({
-        pr_number: pullNumber,
-      });
+    // Find the latest bot priority comment
+    let latestBotCommentIndex = -1;
+    let latestBotCommentId = null;
 
-      if (commentText?.includes('CONFIRM')) {
-        logger.info(`Feedback confirmed for PR #${pullNumber}`);
-        const priority_confirmed = true;
-
-        const actual_priority = feedback?.predicted_priority;
-        if (feedback) {
-          await feedbackRepository.update(feedback.id, {
-            priority_confirmed,
-            actual_priority,
-          });
-          logger.info(
-            `Updated feedback for PR #${pullNumber}: confirmed priority`
-          );
-          feedbackReceived = true;
-          feedbackType = 'confirmed';
-        } else {
-          logger.warn(`No feedback found for PR #${pullNumber}`);
-        }
-      }
-
-      if (
-        commentText === 'HIGH' ||
-        commentText === 'MEDIUM' ||
-        commentText === 'LOW'
-      ) {
-        logger.info(`Feedback received for PR #${pullNumber}: ${commentText}`);
-        const actual_priority = commentText as ValidPriority;
-        const predicted_priority = feedback?.predicted_priority;
-
-        if (feedback) {
-          const priority_confirmed = true;
-          await feedbackRepository.update(feedback.id, {
-            predicted_priority,
-            priority_confirmed,
-            actual_priority,
-          });
-          logger.info(
-            `Updated feedback for PR #${pullNumber}: actual priority set to ${actual_priority}`
-          );
-          feedbackReceived = true;
-          feedbackType = 'actual_priority';
-        } else {
-          logger.warn(`No feedback found for PR #${pullNumber}`);
-        }
+    for (let i = sortedComments.length - 1; i >= 0; i--) {
+      const comment = sortedComments[i];
+      if (comment.user?.type === 'Bot' && comment.body?.includes('PR Priority:')) {
+        latestBotCommentIndex = i;
+        latestBotCommentId = comment.id;
+        break;
       }
     }
-    if (feedbackReceived) {
-      let thankYouMessage = '';
 
-      if (feedbackType === 'confirmed') {
-        thankYouMessage = `✅ Thank you for confirming the priority assessment for this PR! Your feedback helps improve our prioritization system. 📊`;
-      } else {
-        thankYouMessage = `🔄 Thank you for providing feedback on the priority of this PR! Your input helps improve our prioritization system. 📈`;
+    // If no bot priority comment found, don't process feedback
+    if (latestBotCommentIndex === -1) {
+      logger.info(`No bot priority comment found for PR #${pullNumber}, skipping feedback processing`);
+      return;
+    }
+
+    logger.info(`Found bot priority comment at index ${latestBotCommentIndex} for PR #${pullNumber}`);
+
+    // Look for user feedback comments after the latest bot comment
+    let feedbackReceived = false;
+    let feedbackType = '';
+    let feedbackComment = null;
+
+    for (let i = latestBotCommentIndex + 1; i < sortedComments.length; i++) {
+      const comment = sortedComments[i];
+      
+      // Skip bot comments
+      if (comment.user?.type === 'Bot') {
+        continue;
       }
 
-      await octokit.rest.issues.createComment({
-        owner,
-        repo,
-        issue_number: pullNumber,
-        body: thankYouMessage,
-      });
+      const commentText = comment.body?.trim().toUpperCase();
+      
+      // Check for confirmation feedback - only "CONFIRM" keyword
+      if (commentText?.includes('CONFIRM')) {
+        feedbackReceived = true;
+        feedbackType = 'confirmed';
+        feedbackComment = comment;
+        break;
+      }
 
-      logger.info(`Added thank you comment for PR #${pullNumber}`);
+      // Check for correction feedback - only exact priority words HIGH, MEDIUM, LOW
+      if (commentText === 'HIGH' || commentText === 'MEDIUM' || commentText === 'LOW') {
+        feedbackReceived = true;
+        feedbackType = 'corrected';
+        feedbackComment = comment;
+        break;
+      }
+
+      // Don't check for other patterns - only explicit confirmation or correction
+    }
+
+    // Only process if feedback was found after the bot comment
+    if (!feedbackReceived) {
+      logger.info(`No user feedback found after bot priority comment for PR #${pullNumber}`);
+      return;
+    }
+
+    logger.info(`Processing ${feedbackType} feedback for PR #${pullNumber} from comment: ${feedbackComment?.id}`);
+
+    // Process the feedback in the database
+    const feedbackRepository = AppDataSource.getRepository(PrPriorityFeedback);
+    const feedback = await feedbackRepository.findOneBy({
+      pr_number: pullNumber,
+    });
+
+    if (!feedback) {
+      logger.warn(`No feedback record found for PR #${pullNumber}`);
+      return;
+    }
+
+    const commentText = feedbackComment?.body?.trim().toUpperCase();
+
+    if (feedbackType === 'confirmed') {
+      logger.info(`Feedback confirmed for PR #${pullNumber}`);
+      const priority_confirmed = true;
+      const actual_priority = feedback.predicted_priority;
+
+      await feedbackRepository.update(feedback.id, {
+        priority_confirmed,
+        actual_priority,
+      });
+      logger.info(`Updated feedback for PR #${pullNumber}: confirmed priority`);
+    } else if (feedbackType === 'corrected') {
+      // Extract the priority from the comment
+      let actual_priority: ValidPriority = null;
+      
+      if (commentText?.includes('HIGH')) {
+        actual_priority = 'HIGH';
+      } else if (commentText?.includes('MEDIUM')) {
+        actual_priority = 'MEDIUM';
+      } else if (commentText?.includes('LOW')) {
+        actual_priority = 'LOW';
+      }
+
+      if (actual_priority) {
+        logger.info(`Priority correction received for PR #${pullNumber}: ${actual_priority}`);
+        const priority_confirmed = true;
+
+        await feedbackRepository.update(feedback.id, {
+          priority_confirmed,
+          actual_priority,
+        });
+        logger.info(`Updated feedback for PR #${pullNumber}: corrected priority to ${actual_priority}`);
+      }
+    }
+
+    // Send thank you message only if feedback was processed
+    if (feedbackReceived) {
+      // Check if we already sent a thank you message after this bot comment
+      const existingThankYouComments = sortedComments.slice(latestBotCommentIndex + 1).filter(
+        comment => comment.user?.type === 'Bot' && 
+        (comment.body?.includes('Thank you for confirming') || 
+         comment.body?.includes('Thank you for providing feedback'))
+      );
+
+      if (existingThankYouComments.length === 0) {
+        let thankYouMessage = '';
+
+        if (feedbackType === 'confirmed') {
+          thankYouMessage = `✅ Thank you for confirming the priority assessment for this PR! Your feedback helps improve our prioritization system. 📊`;
+        } else if (feedbackType === 'corrected') {
+          thankYouMessage = `🔄 Thank you for correcting the priority of this PR! Your input helps improve our prioritization system. 📈`;
+        }
+
+        await octokit.rest.issues.createComment({
+          owner,
+          repo,
+          issue_number: pullNumber,
+          body: thankYouMessage,
+        });
+
+        logger.info(`Added thank you comment for PR #${pullNumber} after ${feedbackType} feedback`);
+      } else {
+        logger.info(`Thank you message already exists for PR #${pullNumber}, skipping`);
+      }
+    } else {
+      logger.info(`No valid feedback received for PR #${pullNumber} - no thank you message needed`);
     }
   } catch (error) {
     logger.error(`Error processing feedback for PR #${pullNumber}:`, error);
