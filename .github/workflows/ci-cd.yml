@@ -9,9 +9,9 @@ on:
 env:
   AWS_REGION: us-east-1
   EKS_CLUSTER_NAME: effluo-eks-cluster
-  EKS_CLUSTER_ENDPOINT: https://16C55A41E69D803E33DCA9B557943B81.gr7.us-east-1.eks.amazonaws.com
+  EKS_CLUSTER_ENDPOINT: https://F31EA54302C37E9E11F860A2D3B15F85.yl4.us-east-1.eks.amazonaws.com
   DOCKER_IMAGE_NAME: effluo-app
-  RDS_ENDPOINT: effluo-db.cujkukuacaqk.us-east-1.rds.amazonaws.com
+  RDS_ENDPOINT: effluo-db.c8vqoiwgcoek.us-east-1.rds.amazonaws.com:5432
   DATABASE_NAME: effluo
 
 jobs:
@@ -99,7 +99,7 @@ jobs:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
-        
+
     - name: Verify AWS Identity
       run: aws sts get-caller-identity
 
