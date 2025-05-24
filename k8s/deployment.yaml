@@ -18,6 +18,7 @@ spec:
       containers:
       - name: effluo-app
         image: IMAGE_TAG  # Replaced dynamically by CI/CD
+        imagePullPolicy: Always  # Moved here from pod spec
         ports:
         - containerPort: 3000
           protocol: TCP
@@ -111,8 +112,7 @@ spec:
         secret:
           secretName: effluo-github-key
           defaultMode: 0400
-      restartPolicy: Always
-      imagePullPolicy: Always
+      # Removed: restartPolicy: Always (not valid at pod spec level in Deployment)
 ---
 apiVersion: v1
 kind: Service
