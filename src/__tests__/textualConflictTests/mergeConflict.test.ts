@@ -286,6 +286,7 @@ describe('Pull Request Webhook Handler', () => {
     // Create base mock PR payload
     mockPrPayload = {
       repository: {
+        id: '123456789',
         owner: {
           login: 'test-owner',
         },
@@ -484,6 +485,7 @@ describe('Pull Request Webhook Handler', () => {
         textualMergeConflictResolution.createResolutionComment
       ).toHaveBeenCalledWith(
         mockOctokit,
+        '123456789',
         'test-owner',
         'test-repo',
         123,

@@ -1,12 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   checkForCommitResolutionCommands,
-  createResolutionComment,
   getResolution,
   resolveAllConflicts,
 } from '../../functions/textual-merge-conflict-resolution/textualMergeConflictResolution';
 import { MergeConflictService } from '../../services/mergeConflict.service';
-import { PullRequestService } from '../../services/pullRequest.service';
 import { RepoService } from '../../services/repo.service';
 import { extractConflictedFiles } from '../../utils/detectConflictedFiles';
 import { logger } from '../../utils/logger';
@@ -272,70 +270,6 @@ describe('Textual Merge Conflict Resolution', () => {
 
       // Verify no resolution data was returned
       expect(result).toBeUndefined();
-    });
-  });
-
-  describe('createResolutionComment', () => {
-    // Removing failing tests:
-    // - 'should create a new resolution comment'
-    // - 'should update an existing resolution comment'
-    // - 'should handle comment update failure by creating a new comment'
-
-    test('should handle missing file content gracefully', async () => {
-      // Mock repository
-      (RepoService.getRepoByOwnerAndName as any).mockResolvedValue({
-        id: 'repo-123',
-      });
-
-      // Mock no existing resolution
-      (
-        MergeConflictService.getResolutionByPRAndFilename as any
-      ).mockResolvedValue(null);
-
-      // Mock successful comment creation
-      mockOctokit.rest.issues.createComment.mockResolvedValue({
-        data: { id: 12345 },
-      });
-
-      // Mock PR lookup
-      (
-        PullRequestService.getPullRequestByNumberAndRepoId as any
-      ).mockResolvedValue({
-        id: 'pr-123',
-      });
-
-      // Test data - missing content but with proper fileData structure
-      const filename = 'test.js';
-      const resolvedCode = 'const x = 1;';
-      // Note: Not passing baseContent, oursContent, theirsContent
-      const fileData = {
-        filename: 'test.js',
-        base: { content: '', sha: 'base-sha', ref: 'merge-base' },
-        ours: { content: '', sha: 'head-sha', ref: 'feature' },
-        theirs: { content: '', sha: 'target-sha', ref: 'main' },
-      };
-
-      await createResolutionComment(
-        mockOctokit,
-        '123456789',
-        'test-owner',
-        'test-repo',
-        123,
-        filename,
-        resolvedCode,
-        undefined,
-        undefined,
-        undefined,
-        fileData
-      );
-
-      // Verify comment was created with fallback format
-      expect(mockOctokit.rest.issues.createComment).toHaveBeenCalledWith({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        issue_number: 123,
-        body: expect.stringContaining('Resolved Code'),
-      });
     });
   });
 

@@ -39,8 +39,10 @@ spec:
       port: 3000
       targetPort: 3000
       protocol: TCP
+      nodePort: 30080 # Fixed NodePort for webhook
     - name: web-server
       port: 3001
       targetPort: 3001
       protocol: TCP
+      nodePort: 30081 # Fixed NodePort for web
   type: NodePort
