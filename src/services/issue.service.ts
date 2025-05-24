@@ -11,7 +11,7 @@ import { AppDataSource } from '../server/server.ts';
 import { logger } from '../utils/logger.ts';
 import { OwnerService } from './owner.service.ts';
 import { RepoService } from './repo.service.ts';
-import { DeleteResult } from 'typeorm';
+import { DeleteResult, In } from 'typeorm';
 import { Octokit } from 'octokit';
 
 export class IssueService {
@@ -160,23 +160,31 @@ export class IssueService {
         auth: token,
       });
       const { data } = await octokit.rest.users.getAuthenticated();
-      if (data) {
-        const { login } = data;
-
-        if (!login) {
-          logger.error(`User is unauthorized to view issues`);
-          throw new Error('unauthorized');
-        } else {
-          const repos = await this.getIssuesByOwnerLogin(login);
-          return repos;
-        }
-      }
-    } catch (error) {
-      logger.error((error as Error).message);
-      if ((error as Error).message === 'unauthorized') {
+      if (!data?.login) {
+        logger.error(`User is unauthorized to view issues`);
         throw new Error('unauthorized');
       }
-      throw new Error(`Error getting issue by token: ${error}`);
+      const accessibleRepos = await RepoService.getAccessibleRepos(octokit);
+
+      const repos = await this.issueRepository.find({
+        where: {
+          repo: {
+            id: In(accessibleRepos.map((repo) => repo.id)),
+          },
+        },
+      });
+      return repos;
+    } catch (error: any) {
+      if (
+        error?.status === 401 || // Octokit throws this
+        error?.message?.includes('Bad credentials') // fallback match
+      ) {
+        logger.warn('GitHub token is invalid or unauthorized');
+        throw new Error('unauthorized');
+      }
+
+      logger.error(error);
+      throw new Error(`${error.message}`);
     }
   }
 

@@ -3,6 +3,8 @@ import { Review } from '../entities/review.entity.ts';
 import { AppDataSource } from '../server/server.ts';
 import { OwnerService } from './owner.service.ts';
 import { logger } from '../utils/logger.ts';
+import { In } from 'typeorm';
+import { RepoService } from './repo.service.ts';
 
 export class ReviewService {
   private static reviewRepository = AppDataSource.getRepository(Review);
@@ -78,22 +80,33 @@ export class ReviewService {
         auth: token,
       });
       const { data } = await octokit.rest.users.getAuthenticated();
-      if (data) {
-        const { login } = data;
-        if (!login) {
-          logger.error(`User is unauthorized to view reviews`);
-          throw new Error('unauthorized');
-        } else {
-          const repos = await this.getReviewsByOwnerLogin(login);
-          return repos;
-        }
-      }
-    } catch (error) {
-      logger.error((error as Error).message);
-      if ((error as Error).message === 'unauthorized') {
+      if (!data?.login) {
+        logger.error(`User is unauthorized to view reviews`);
         throw new Error('unauthorized');
       }
-      throw new Error(`Error getting pull requests by token: ${error}`);
+      const accessibleRepos = await RepoService.getAccessibleRepos(octokit);
+
+      const reviews = await this.reviewRepository.find({
+        where: {
+          pull_request: {
+            repository: {
+              id: In(accessibleRepos.map((repo) => repo.id)),
+            },
+          },
+        },
+      });
+      return reviews;
+    } catch (error: any) {
+      if (
+        error?.status === 401 || // Octokit throws this
+        error?.message?.includes('Bad credentials') // fallback match
+      ) {
+        logger.warn('GitHub token is invalid or unauthorized');
+        throw new Error('unauthorized');
+      }
+
+      logger.error(error);
+      throw new Error(`${error.message}`);
     }
   }
 
