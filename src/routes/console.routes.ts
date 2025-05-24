@@ -15,7 +15,9 @@ router.get('/console/prs', async (req: Request, res: Response) => {
     const prs = await PullRequestService.getPullRequestsByToken(token);
     res.json(prs);
   } catch (err) {
-    res.status(500).json({ message: 'Cannot get prs' });
+    if ((err as Error).message === 'unauthorized')
+      res.status(401).json({ message: 'Unauthorized' });
+    else res.status(500).json({ message: (err as Error).message });
   }
 });
 
@@ -66,6 +68,44 @@ router.get('/console/reviewer-summary', async (req: Request, res: Response) => {
     else res.status(500).json({ message: (err as Error).message });
   }
 });
+
+router.delete(
+  '/console/reviewer-summary/:id',
+  async (req: Request, res: Response) => {
+    try {
+      const token = getToken(req);
+      const { id } = req.params;
+      const response = await UserReviewSummaryService.deleteById(
+        parseInt(id),
+        token
+      );
+      res.json(response);
+    } catch (err) {
+      if ((err as Error).message === 'unauthorized')
+        res.status(401).json({ message: 'Unauthorized' });
+      else res.status(500).json({ message: (err as Error).message });
+    }
+  }
+);
+
+router.delete(
+  '/console/reviewer-summary/delete-many',
+  async (req: Request, res: Response) => {
+    try {
+      const token = getToken(req);
+      const ids = req.body?.ids;
+      const response = await UserReviewSummaryService.deleteManyByIds(
+        ids,
+        token
+      );
+      res.json(response);
+    } catch (err) {
+      if ((err as Error).message === 'unauthorized')
+        res.status(401).json({ message: 'Unauthorized' });
+      else res.status(500).json({ message: (err as Error).message });
+    }
+  }
+);
 
 router.get('/console/workload', async (req: Request, res: Response) => {
   try {

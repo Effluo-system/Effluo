@@ -3,6 +3,8 @@ import { PRReviewRequest } from '../entities/prReviewRequest.entity.ts';
 import { AppDataSource } from '../server/server.ts';
 import { OwnerService } from './owner.service.ts';
 import { logger } from '../utils/logger.ts';
+import { RepoService } from './repo.service.ts';
+import { In } from 'typeorm';
 
 export class PRReviewRequestService {
   private static reviewRequestRepository =
@@ -98,35 +100,33 @@ export class PRReviewRequestService {
         auth: token,
       });
       const { data } = await octokit.rest.users.getAuthenticated();
-      if (data) {
-        const { id } = data;
-        const isOwner = await OwnerService.getOwnersById(id.toString());
-        if (!isOwner) {
-          logger.error(`User is unauthorized to view summaries`);
-          throw new Error('unauthorized');
-        } else {
-          const owner = await OwnerService.getOwnersById(
-            isOwner?.id?.toString()
-          );
-          const summaries = await this.reviewRequestRepository
-            .createQueryBuilder('request')
-            .leftJoinAndSelect('request.pr', 'pr')
-            .leftJoinAndSelect('pr.repository', 'repo')
-            .leftJoinAndSelect('repo.owner', 'owner')
-            .where('owner.id = :id', { id: isOwner?.id })
-            .orWhere('request.assignees @> :login', {
-              login: JSON.stringify([owner?.login]),
-            }) // Condition 2
-            .getMany();
-          return summaries;
-        }
-      }
-    } catch (error) {
-      logger.error((error as Error).message);
-      if ((error as Error).message === 'unauthorized') {
+      if (!data?.login) {
+        logger.error(`Unauthorized`);
         throw new Error('unauthorized');
       }
-      throw new Error(`Error getting Review requests by token: ${error}`);
+
+      const accessibleRepos = await RepoService.getAccessibleRepos(octokit);
+      const reviewRequests = await this.reviewRequestRepository.find({
+        where: {
+          pr: {
+            repository: {
+              id: In(accessibleRepos.map((repo) => repo.id)),
+            },
+          },
+        },
+      });
+      return reviewRequests;
+    } catch (error: any) {
+      if (
+        error?.status === 401 || // Octokit throws this
+        error?.message?.includes('Bad credentials') // fallback match
+      ) {
+        logger.warn('GitHub token is invalid or unauthorized');
+        throw new Error('unauthorized');
+      }
+
+      logger.error(error);
+      throw new Error(`${error.message}`);
     }
   }
 }
