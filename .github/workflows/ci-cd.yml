@@ -53,36 +53,21 @@ jobs:
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKER_HUB_TOKEN }}
-    
-    - name: Verify Docker login
-      run: docker info
-
-    # Simple approach: use git commit SHA as tag
-    - name: Generate image tag
-      id: tag
-      run: |
-        IMAGE_TAG="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:${GITHUB_SHA:0:8}"
-        echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
-        echo "Generated image tag: ${IMAGE_TAG}"
 
     - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: ./Dockerfile
-        push: true
-        tags: ${{ steps.tag.outputs.image_tag }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-
-    outputs:
-      image-tag: ${{ steps.tag.outputs.image_tag }}
+      run: |
+        # Use run number for consistent tagging
+        IMAGE_TAG="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:run-${{ github.run_number }}"
+        echo "Building and pushing: ${IMAGE_TAG}"
+        
+        docker build -t ${IMAGE_TAG} .
+        docker push ${IMAGE_TAG}
+        
+        echo "Successfully pushed: ${IMAGE_TAG}"
 
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    env:
-      DOCKER_IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
 
     steps:
     - name: Checkout code
@@ -95,9 +80,6 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: Verify AWS Identity
-      run: aws sts get-caller-identity
-
     - name: Update kubeconfig
       run: |
         aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
@@ -105,15 +87,19 @@ jobs:
 
     - name: Deploy to EKS
       run: |
-        echo "Using image tag: ${DOCKER_IMAGE_TAG}"
-        if [ -z "${DOCKER_IMAGE_TAG}" ]; then
-          echo "Error: DOCKER_IMAGE_TAG is empty"
-          exit 1
-        fi
-        sed -i "s|IMAGE_TAG|${DOCKER_IMAGE_TAG}|g" k8s/deployment.yaml
-        echo "Updated deployment.yaml:"
-        grep -A 5 -B 5 "image:" k8s/deployment.yaml
-        kubectl apply -f k8s/deployment.yaml --validate=false
+        # Use same tagging strategy as build job
+        IMAGE_TAG="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:run-${{ github.run_number }}"
+        echo "Deploying image: ${IMAGE_TAG}"
+        
+        # Replace the placeholder in deployment.yaml
+        sed -i "s|IMAGE_TAG|${IMAGE_TAG}|g" k8s/deployment.yaml
+        
+        # Show what we're deploying
+        echo "Deployment configuration:"
+        grep -A 2 -B 2 "image:" k8s/deployment.yaml
+        
+        # Apply the deployment
+        kubectl apply -f k8s/deployment.yaml
         kubectl rollout status deployment/effluo-app -n default --timeout=300s
         kubectl get services effluo-app-service -n default
 
@@ -127,6 +113,7 @@ jobs:
       run: |
         if [ "${{ needs.deploy.result }}" == "success" ]; then
           echo "✅ Deployment successful!"
+          echo "Image deployed: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:run-${{ github.run_number }}"
         else
           echo "❌ Deployment failed!"
           exit 1
