@@ -1,39 +1,39 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: effluo-web
+  name: effluo-flask
   namespace: effluo
   labels:
-    app: web
+    app: flask
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: web
+      app: flask
   template:
     metadata:
       labels:
-        app: web
+        app: flask
     spec:
       containers:
-        - name: web
-          image: navojith/effluo-web:latest
+        - name: flask
+          image: navojith/effluo-flask:latest
           ports:
-            - containerPort: 5173
+            - containerPort: 5000
           envFrom:
             - secretRef:
-                name: effluo-web-env
+                name: effluo-flask-env
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: effluo-web
+  name: effluo-flask
   namespace: effluo
 spec:
   selector:
-    app: web
+    app: flask
   ports:
-    - port: 5173
-      targetPort: 5173
+    - port: 5000
+      targetPort: 5000
       protocol: TCP
   type: NodePort
