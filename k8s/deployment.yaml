@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: effluo-app
-        image: IMAGE_TAG  # This will be replaced by the GitHub Actions workflow
+        image: IMAGE_TAG  # Replaced dynamically by CI/CD
         ports:
         - containerPort: 3000
           protocol: TCP
@@ -32,7 +32,7 @@ spec:
               name: effluo-secrets
               key: DATABASE_URL
         - name: DB_HOST
-          value: "effluo-db.cujkukuacaqk.us-east-1.rds.amazonaws.com"
+          value: "effluo-db.c8vqoiwgcoek.us-east-1.rds.amazonaws.com"
         - name: DB_PORT
           value: "5432"
         - name: DB_NAME
@@ -47,7 +47,6 @@ spec:
             secretKeyRef:
               name: effluo-secrets
               key: DB_PASSWORD
-        # GitHub App Configuration
         - name: APP_ID
           valueFrom:
             secretKeyRef:
@@ -78,7 +77,6 @@ spec:
             secretKeyRef:
               name: effluo-secrets
               key: GEMINI_API_KEY
-        # Private key is mounted as a file
         - name: PRIVATE_KEY_PATH
           value: "/app/secrets/private-key.pem"
         resources:
@@ -112,10 +110,9 @@ spec:
       - name: github-private-key
         secret:
           secretName: effluo-github-key
-          defaultMode: 0400  # Read-only for owner only
+          defaultMode: 0400
       restartPolicy: Always
       imagePullPolicy: Always
-
 ---
 apiVersion: v1
 kind: Service

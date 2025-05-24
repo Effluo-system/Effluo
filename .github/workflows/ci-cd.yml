@@ -17,23 +17,23 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '18'
         cache: 'npm'
-    
+
     - name: Install dependencies
       run: npm install --force
-    
+
     # - name: Run tests
     #   run: npm test
-    
+
     - name: Run build
       run: npm run build
 
@@ -41,26 +41,22 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
 
-    
     outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
+      image-tag: ${{ steps.meta.outputs.version }}
       image-digest: ${{ steps.build.outputs.digest }}
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
-    
+
     - name: Login to Docker Hub
       uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKER_HUB_TOKEN }}
-    
-    - name: Verify Docker login
-      run: docker info
 
     - name: Extract metadata
       id: meta
@@ -68,11 +64,8 @@ jobs:
       with:
         images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}
         tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=sha,prefix={{branch}}-
-          type=raw,value=latest,enable={{is_default_branch}}
-    
+          type=sha,prefix=deploy-aws-
+
     - name: Build and push Docker image
       id: build
       uses: docker/build-push-action@v5
@@ -88,11 +81,13 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    
+    env:
+      IMAGE_TAG: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -108,26 +103,19 @@ jobs:
         aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
         kubectl config use-context arn:aws:eks:${{ env.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:cluster/${{ env.EKS_CLUSTER_NAME }}
 
-    
     - name: Deploy to EKS
       run: |
-        # Replace image tag in deployment file
-        sed -i "s|IMAGE_TAG|${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}|g" k8s/deployment.yaml
-        
-        # Apply Kubernetes manifests
+        echo "Replacing image with tag: $IMAGE_TAG"
+        sed -i "s|IMAGE_TAG|$IMAGE_TAG|g" k8s/deployment.yaml
         kubectl apply -f k8s/deployment.yaml --validate=false
-        
-        # Wait for deployment to be ready
         kubectl rollout status deployment/effluo-app -n default --timeout=300s
-        
-        # Get service endpoint
         kubectl get services effluo-app-service -n default
 
   notify:
     needs: [test, build-and-push, deploy]
     runs-on: ubuntu-latest
     if: always()
-    
+
     steps:
     - name: Notify deployment status
       run: |
@@ -136,4 +124,3 @@ jobs:
         else
           echo "❌ Deployment failed!"
           exit 1
-        fi
