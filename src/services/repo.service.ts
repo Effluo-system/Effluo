@@ -77,7 +77,7 @@ export class RepoService {
       });
       const { data } = await octokit.rest.users.getAuthenticated();
       if (!data?.login) {
-        logger.error(`User is unauthorized to view summaries`);
+        logger.error(`User is unauthorized to view repos`);
         throw new Error('unauthorized');
       }
       const accessibleRepos = await this.getAccessibleRepos(octokit);
@@ -98,12 +98,17 @@ export class RepoService {
       //   return repos;
       // }
       return repos;
-    } catch (error) {
-      logger.error((error as Error).message);
-      if ((error as Error).message === 'unauthorized') {
+    } catch (error: any) {
+      if (
+        error?.status === 401 || // Octokit throws this
+        error?.message?.includes('Bad credentials') // fallback match
+      ) {
+        logger.warn('GitHub token is invalid or unauthorized');
         throw new Error('unauthorized');
       }
-      throw new Error(`Error getting pull requests by token: ${error}`);
+
+      logger.error(error);
+      throw new Error(`${error.message}`);
     }
   }
 

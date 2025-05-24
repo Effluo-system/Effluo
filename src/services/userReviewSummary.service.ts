@@ -93,15 +93,20 @@ export class UserReviewSummaryService {
       });
 
       return summaries;
-    } catch (error) {
-      logger.error((error as Error).message);
-      if ((error as Error).message === 'unauthorized') {
+    } catch (error: any) {
+      if (
+        error?.status === 401 || // Octokit throws this
+        error?.message?.includes('Bad credentials') // fallback match
+      ) {
+        logger.warn('GitHub token is invalid or unauthorized');
         throw new Error('unauthorized');
       }
-      throw new Error(`Error getting Summaries by token: ${error}`);
+
+      logger.error(error);
+      throw new Error(`${error.message}`);
     }
   }
-  public static async deleteById(id: number, token: string): Promise<void> {
+  public static async deleteById(id: number, token: string) {
     try {
       if (!id) {
         logger.error(`id must be defined`);
@@ -111,19 +116,40 @@ export class UserReviewSummaryService {
         auth: token,
       });
       const { data } = await octokit.rest.users.getAuthenticated();
-
-      if (data) {
-        const { login } = data;
-
-        if (!login) {
-          logger.error(`User is unauthorized to delete summaries`);
-          throw new Error('unauthorized');
-        } else {
-          await this.reviewSummaryRepository.delete(id);
-        }
+      if (!data?.login) {
+        logger.error(`Unauthorized`);
+        throw new Error('unauthorized');
       }
-    } catch (error) {
-      throw new Error(`Error deleting summary with id ${id}: ${error}`);
+
+      const accessibleRepos = await RepoService.getAccessibleRepos(octokit);
+      const accessibleRepoIds = accessibleRepos.map((repo) => repo.id);
+      const summary = await this.reviewSummaryRepository.findOne({
+        where: {
+          id: id,
+        },
+        relations: ['repo'],
+      });
+      if (
+        summary?.repo?.id &&
+        accessibleRepoIds.includes(parseInt(summary.repo.id))
+      ) {
+        const res = await this.reviewSummaryRepository.delete(id);
+        return res;
+      } else {
+        logger.error('unauthorized');
+        throw new Error('unauthorized');
+      }
+    } catch (error: any) {
+      if (
+        error?.status === 401 || // Octokit throws this
+        error?.message?.includes('Bad credentials') // fallback match
+      ) {
+        logger.warn('GitHub token is invalid or unauthorized');
+        throw new Error('unauthorized');
+      }
+
+      logger.error(error);
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -151,10 +177,17 @@ export class UserReviewSummaryService {
           await this.reviewSummaryRepository.delete(ids);
         }
       }
-    } catch (error) {
-      throw new Error(
-        `Error deleting summaries with ids [${ids.join(', ')}]: ${error}`
-      );
+    } catch (error: any) {
+      if (
+        error?.status === 401 || // Octokit throws this
+        error?.message?.includes('Bad credentials') // fallback match
+      ) {
+        logger.warn('GitHub token is invalid or unauthorized');
+        throw new Error('unauthorized');
+      }
+
+      logger.error(error);
+      throw new Error(`${error.message}`);
     }
   }
 }
