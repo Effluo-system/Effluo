@@ -1,3 +1,65 @@
-/node_modules
-/dist
-/logs
+# Dependencies
+node_modules
+npm-debug.log*
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.test
+
+# Private keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Secrets and credentials
+**/private/**
+secrets/
+credentials/
+
+# Development files
+.git
+.gitignore
+README.md
+*.md
+
+# Testing
+coverage/
+.nyc_output
+test/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+logs
+*.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Terraform files (if in same repo)
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Kubernetes files (if in same repo)
+k8s/secrets/
