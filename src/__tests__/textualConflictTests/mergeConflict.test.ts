@@ -124,6 +124,7 @@ describe('Pull Request Webhook Handler', () => {
         for (const conflict of resolution) {
           await textualMergeConflictResolution.createResolutionComment(
             octokit as any,
+            payload.repository.id.toString(),
             payload.repository.owner.login,
             payload.repository.name,
             payload.pull_request.number,
@@ -223,6 +224,7 @@ describe('Pull Request Webhook Handler', () => {
           for (const conflict of resolution) {
             await textualMergeConflictResolution.createResolutionComment(
               octokit as any,
+              payload.repository.id.toString(),
               payload.repository.owner.login,
               payload.repository.name,
               pr.number,

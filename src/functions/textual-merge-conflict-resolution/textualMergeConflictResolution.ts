@@ -341,8 +341,7 @@ function generateResolutionDiff(
 }
 
 async function storeResolution(
-  owner: string,
-  repoName: string,
+  repoId: string,
   pullNumber: number,
   filename: string,
   resolvedCode: string,
@@ -353,13 +352,10 @@ async function storeResolution(
   commentId?: number
 ) {
   try {
-    const fullRepoName = `${owner}/${repoName}`;
-    let repoEntity = await RepoService.getRepoByOwnerAndName(
-      owner,
-      fullRepoName
-    );
+    const repoEntity = await RepoService.getRepoById(repoId);
+
     if (!repoEntity) {
-      logger.error(`Repository ${fullRepoName} not found in database`);
+      logger.error(`Repository with ID:${repoId} not found in database`);
       return null;
     }
 
@@ -405,14 +401,14 @@ async function storeResolution(
     } else {
       // Get the pull request by number and repo name
       const pullRequest =
-        await PullRequestService.getPullRequestByNumberAndRepoName(
+        await PullRequestService.getPullRequestByNumberAndRepoId(
           pullNumber,
-          `${owner}/${repoName}`
+          repoId
         );
 
       if (!pullRequest) {
         logger.error(
-          `Pull request #${pullNumber} not found in repository ${owner}/${repoName}`
+          `Pull request #${pullNumber} not found in repository with ID:${repoId}`
         );
         return null;
       }
@@ -443,6 +439,7 @@ async function storeResolution(
 
 export async function createResolutionComment(
   octokit: Octokit,
+  repoId: string,
   owner: string,
   repo: string,
   pullNumber: number,
@@ -454,12 +451,7 @@ export async function createResolutionComment(
   fileData?: ConflictData
 ) {
   try {
-    const fullRepoName = `${owner}/${repo}`;
-    // Check for existing comment ID
-    const repoEntity = await RepoService.getRepoByOwnerAndName(
-      owner,
-      fullRepoName
-    );
+    const repoEntity = await RepoService.getRepoById(repoId);
     let existingCommentId: number | undefined;
 
     if (repoEntity) {
@@ -566,14 +558,16 @@ Please note there will be no further confirmation before applying all resolution
     // Either update existing comment or create a new one
     if (commentId) {
       try {
-        await octokit.rest.issues.updateComment({
+        const response = await octokit.rest.issues.updateComment({
           owner,
           repo,
           comment_id: commentId,
           body: commentBody,
         });
 
-        logger.info(`Updated resolution comment for ${filename}`);
+        logger.info(
+          `Updated resolution comment for ${filename} with response: ${response.status}`
+        );
       } catch (error) {
         // If update fails, create a new comment
         const { data: comment } = await octokit.rest.issues.createComment({
@@ -603,8 +597,7 @@ Please note there will be no further confirmation before applying all resolution
 
     // Store the resolution with the comment ID
     return await storeResolution(
-      owner,
-      repo,
+      repoId,
       pullNumber,
       filename,
       resolvedCode,
@@ -622,8 +615,7 @@ Please note there will be no further confirmation before applying all resolution
 
     // Fall back to just storing the resolution without comment ID
     return await storeResolution(
-      owner,
-      repo,
+      repoId,
       pullNumber,
       filename,
       resolvedCode,
