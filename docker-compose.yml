@@ -41,10 +41,11 @@ services:
     restart: always
 
   effluo-flask:
-    build:
-      context: ../Effluo-flask
-      dockerfile: Dockerfile
+    # build:
+    #   context: ../Effluo-flask
+    #   dockerfile: Dockerfile
     container_name: effluo-flask
+    image: navojith/effluo-flask:latest
     env_file:
       - .env
     ports:
