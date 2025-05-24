@@ -52,6 +52,8 @@ app.webhooks.on(
         pr.reviewDifficulty = reviewDifficulty;
         await PullRequestService.updatePullRequest(pr);
       }
+
+      // Check for merge conflicts
       const mergable = await checkForMergeConflicts(
         octokit,
         payload.repository.owner.login,
@@ -82,6 +84,7 @@ app.webhooks.on(
         for (const conflict of resolution) {
           await createResolutionComment(
             octokit as any,
+            payload.repository.id.toString(),
             payload.repository.owner.login,
             payload.repository.name,
             payload.pull_request.number,
@@ -177,6 +180,7 @@ app.webhooks.on('push', async ({ octokit, payload }) => {
         for (const conflict of resolution) {
           await createResolutionComment(
             octokit as any,
+            payload.repository.id.toString(),
             payload.repository.owner.login,
             payload.repository.name,
             pr.number,

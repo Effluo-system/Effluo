@@ -56,7 +56,7 @@ vi.mock('../../services/repo.service', () => ({
 
 vi.mock('../../services/pullRequest.service', () => ({
   PullRequestService: {
-    getPullRequestByNumberAndRepoName: vi.fn(),
+    getPullRequestByNumberAndRepoId: vi.fn(),
   },
 }));
 
@@ -299,7 +299,7 @@ describe('Textual Merge Conflict Resolution', () => {
 
       // Mock PR lookup
       (
-        PullRequestService.getPullRequestByNumberAndRepoName as any
+        PullRequestService.getPullRequestByNumberAndRepoId as any
       ).mockResolvedValue({
         id: 'pr-123',
       });
@@ -317,6 +317,7 @@ describe('Textual Merge Conflict Resolution', () => {
 
       await createResolutionComment(
         mockOctokit,
+        '123456789',
         'test-owner',
         'test-repo',
         123,
