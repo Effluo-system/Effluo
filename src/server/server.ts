@@ -34,7 +34,7 @@ export const startServer = async () => {
       logger.info('Press Ctrl + C to quit.');
     });
     app.listen(3001, () => {
-      logger.info(`Server is listening for events at: ${localWebhookUrl}`);
+      logger.info(`Server is listening for events at port 3001`);
       logger.info('Press Ctrl + C to quit.');
     });
   } catch (error) {

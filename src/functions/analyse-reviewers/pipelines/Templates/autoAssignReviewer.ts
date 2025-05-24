@@ -11,6 +11,9 @@ on:
       - labeled
       - opened
 
+permissions:
+  pull-requests: write
+
 jobs:
   assign-reviewer:
     runs-on: ubuntu-latest
@@ -19,6 +22,7 @@ jobs:
     - name: Assign ${args.reviewers.join(', ')} as a reviewer
       uses: actions/github-script@v6
       with:
+        github-token: \${{ secrets.EFFLUO_PAT }}
         script: |
           const reviewers = [${args.reviewers
             .map((reviewer) => `"${reviewer}"`)

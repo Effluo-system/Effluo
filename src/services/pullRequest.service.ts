@@ -1,5 +1,3 @@
-import { PullRequest } from '../entities/pullRequest.entity.ts';
-import { AppDataSource } from '../server/server.ts';
 import type {
   PullRequestLabeledEvent,
   PullRequestOpenedEvent,
@@ -11,14 +9,14 @@ import type {
   PullRequestUnlabeledEvent,
   User,
 } from '@octokit/webhooks-types/schema.d.ts';
+import { Octokit } from 'octokit';
+import { PullRequest } from '../entities/pullRequest.entity.ts';
+import { AppDataSource } from '../server/server.ts';
 import { logger } from '../utils/logger.ts';
 import { OwnerService } from './owner.service.ts';
-import { RepoService } from './repo.service.ts';
-import { Octokit } from 'octokit';
-import { In } from 'typeorm';
-import { PRReviewRequest } from '../entities/prReviewRequest.entity.ts';
 import { PRReviewRequestService } from './prReviewRequest.service.ts';
-import { Repo } from '../entities/repo.entity.ts';
+import { RepoService } from './repo.service.ts';
+import { In } from 'typeorm';
 export class PullRequestService {
   private static pullRequestRepository =
     AppDataSource.getRepository(PullRequest);
@@ -157,32 +155,56 @@ export class PullRequestService {
       const octokit = new Octokit({
         auth: token,
       });
-      const { data } = await octokit.rest.users.getAuthenticated();
 
-      if (data) {
-        const { login } = data;
-        const prs = await this.pullRequestRepository.find({
-          where: [
-            {
-              created_by_user_login: login,
-            },
-            {
-              repository: {
-                owner: {
-                  login: login.toString(),
-                },
-              },
-            },
-          ],
-          relations: ['repository', 'repository.owner'],
-        });
-        return prs;
+      const { data } = await octokit.rest.users.getAuthenticated();
+      if (!data?.login) {
+        logger.error(`Unauthorized`);
+        throw new Error('unauthorized');
       }
-    } catch (error) {
+
+      const accessibleRepos = await RepoService.getAccessibleRepos(octokit);
+      const prs = await this.pullRequestRepository.find({
+        where: {
+          repository: {
+            id: In(accessibleRepos.map((repo) => repo.id)),
+          },
+        },
+        relations: ['repository'],
+      });
+      return prs;
+    } catch (error: any) {
+      if (
+        error?.status === 401 || // Octokit throws this
+        error?.message?.includes('Bad credentials') // fallback match
+      ) {
+        logger.warn('GitHub token is invalid or unauthorized');
+        throw new Error('unauthorized');
+      }
+
       logger.error(error);
-      throw new Error(`Error getting pull requests by token: ${error}`);
+      throw new Error(`Error getting pull requests by token: ${error.message}`);
     }
   }
 
-  
+  public static async getPullRequestByNumberAndRepoId(
+    number: number,
+    repoId: string
+  ): Promise<PullRequest | null> {
+    try {
+      return this.pullRequestRepository.findOne({
+        where: {
+          number,
+          repository: {
+            id: repoId,
+          },
+        },
+        relations: ['repository'],
+      });
+    } catch (error) {
+      logger.error(error);
+      throw new Error(
+        `Error getting pull request by number and repo name from db: ${error}`
+      );
+    }
+  }
 }

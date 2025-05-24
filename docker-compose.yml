@@ -1,0 +1,55 @@
+services:
+  effluo-main:
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    container_name: effluo-main
+    image: navojith/effluo-main:latest
+    env_file:
+      - .env.docker
+    ports:
+      - '3000:3000'
+      - '3001:3001'
+    depends_on:
+      - postgres
+    restart: always
+
+  postgres:
+    image: postgres
+    container_name: effluo-db
+    environment:
+      POSTGRES_DB: Effluo
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    restart: always
+
+  effluo-web:
+    # build:
+    #   context: ../Effluo-web
+    #   dockerfile: Dockerfile
+    container_name: effluo-web
+    image: navojith/effluo-web:latest
+    env_file:
+      - .env
+    ports:
+      - '5173:5173'
+    restart: always
+
+  effluo-flask:
+    build:
+      context: ../Effluo-flask
+      dockerfile: Dockerfile
+    container_name: effluo-flask
+    env_file:
+      - .env
+    ports:
+      - '5000:5000'
+    restart: always
+
+volumes:
+  pgdata:

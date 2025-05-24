@@ -1,13 +1,16 @@
-name: Check Build
+name: Check Build and Tests
 
 on:
+  push:
+    branches:
+      - dev
   pull_request:
     branches:
       - main
       - dev
 
 jobs:
-  build:
+  check:
     runs-on: ubuntu-latest
 
     steps:
@@ -22,5 +25,11 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      # - name: Lint code
+      #   run: npm run lint
+
       - name: Build the project
         run: npm run build
+
+      - name: Run tests
+        run: npm run test
