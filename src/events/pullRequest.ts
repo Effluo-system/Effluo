@@ -17,10 +17,12 @@ import { PrFeedback } from '../entities/prFeedback.entity.ts';
 import { prioritizePullRequest } from '../functions/pr-prioritization/pr-prioritization.ts';
 import { PRReviewRequestService } from '../services/prReviewRequest.service.ts';
 import { PrConflictAnalysisService } from '../services/prConflictAnalysis.service.ts';
-import {processPriorityFeedback} from '../functions/pr-prioritization/pr-prioritization.ts';
+import { processPriorityFeedback } from '../functions/pr-prioritization/pr-prioritization.ts';
 
 app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
-  logger.info(`Received a pull request event for #${payload.pull_request.number}`);
+  logger.info(
+    `Received a pull request event for #${payload.pull_request.number}`
+  );
   try {
     const files1 = await analyzePullRequest(
       octokit,
@@ -58,7 +60,9 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
   } catch (error) {
     const customError = error as CustomError;
     if (customError.response) {
-      logger.error(`Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`);
+      logger.error(
+        `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
+      );
     } else {
       logger.error(customError.message || 'An unknown error occurred');
     }
@@ -66,27 +70,36 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
 });
 
 app.webhooks.on('issue_comment.created', async ({ octokit, payload }) => {
-  if (payload.comment.user.login.includes('bot') || payload.comment.user.type === 'Bot') {
+  if (
+    payload.comment.user.login.includes('bot') ||
+    payload.comment.user.type === 'Bot'
+  ) {
     return;
   }
 
   const commentBody = payload.comment.body.trim();
 
-  if (commentBody.startsWith('#Confirm') || commentBody.startsWith('#NotAConflict')) {
+  if (
+    commentBody.startsWith('#Confirm') ||
+    commentBody.startsWith('#NotAConflict')
+  ) {
     try {
       const { issue, comment } = payload;
       const prNumber = issue.number;
       const owner = payload.repository.owner.login;
       const repo = payload.repository.name;
 
-      const wasAnalyzedWithValidationForm = await PrConflictAnalysisService.wasAnalyzedWithValidationForm(
-        prNumber,
-        owner,
-        repo
-      );
+      const wasAnalyzedWithValidationForm =
+        await PrConflictAnalysisService.wasAnalyzedWithValidationForm(
+          prNumber,
+          owner,
+          repo
+        );
 
       if (!wasAnalyzedWithValidationForm) {
-        logger.info(`Ignoring comment for PR #${prNumber} as it wasn't analyzed for conflicts or didn't have a validation form posted`);
+        logger.info(
+          `Ignoring comment for PR #${prNumber} as it wasn't analyzed for conflicts or didn't have a validation form posted`
+        );
         return;
       }
 
@@ -107,8 +120,14 @@ app.webhooks.on('issue_comment.created', async ({ octokit, payload }) => {
         });
       } else {
         explanation = commentBody.replace('#NotAConflict', '').trim();
-        responseMessage = `📝 **AI Conflict Validation Feedback** 📝\n\nThe reviewer has determined that **this is not a conflict**.\n🛠 **Reason:** ${explanation ? explanation : '_No reason provided_'}`;
-        logger.info(`Not a conflict for PR #${prNumber}: ${explanation || 'No reason provided'}`);
+        responseMessage = `📝 **AI Conflict Validation Feedback** 📝\n\nThe reviewer has determined that **this is not a conflict**.\n🛠 **Reason:** ${
+          explanation ? explanation : '_No reason provided_'
+        }`;
+        logger.info(
+          `Not a conflict for PR #${prNumber}: ${
+            explanation || 'No reason provided'
+          }`
+        );
       }
 
       await octokit.rest.issues.createComment({
@@ -122,7 +141,9 @@ app.webhooks.on('issue_comment.created', async ({ octokit, payload }) => {
     } catch (error) {
       const customError = error as CustomError;
       if (customError.response) {
-        logger.error(`Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`);
+        logger.error(
+          `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
+        );
       } else {
         logger.error(customError.message || 'An unknown error occurred');
       }
@@ -131,7 +152,9 @@ app.webhooks.on('issue_comment.created', async ({ octokit, payload }) => {
 });
 
 app.webhooks.on('pull_request.reopened', async ({ octokit, payload }) => {
-  logger.info(`Received a pull request event for #${payload.pull_request.number}`);
+  logger.info(
+    `Received a pull request event for #${payload.pull_request.number}`
+  );
   try {
     await PrConflictAnalysisService.resetValidationFormPosted(
       payload.pull_request.number,
@@ -160,9 +183,14 @@ app.webhooks.on('pull_request.reopened', async ({ octokit, payload }) => {
     const conflictAnalysis = await analyzeConflicts(files2);
     const reviewDifficulty = await calculateReviewDifficultyOfPR(files1);
 
-    let pr = await PullRequestService.getPullRequestById(payload.pull_request.id.toString());
+    let pr = await PullRequestService.getPullRequestById(
+      payload.pull_request.id.toString()
+    );
     if (!pr) {
-      pr = await PullRequestService.initiatePullRequestCreationFlow(payload, reviewDifficulty);
+      pr = await PullRequestService.initiatePullRequestCreationFlow(
+        payload,
+        reviewDifficulty
+      );
     } else {
       pr.reviewDifficulty = reviewDifficulty;
       await PullRequestService.updatePullRequest(pr);
@@ -178,57 +206,73 @@ app.webhooks.on('pull_request.reopened', async ({ octokit, payload }) => {
   } catch (error) {
     const customError = error as CustomError;
     if (customError.response) {
-      logger.error(`Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`);
+      logger.error(
+        `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
+      );
     } else {
       logger.error(customError.message || 'An unknown error occurred');
     }
   }
 });
 
-app.webhooks.on(['pull_request.labeled', `pull_request.unlabeled`], async ({ octokit, payload }) => {
-  try {
-    if (!payload.sender.login.includes('bot')) {
-      logger.info(`Received a label event for #${payload?.label?.name}`);
+app.webhooks.on(
+  ['pull_request.labeled', `pull_request.unlabeled`],
+  async ({ octokit, payload }) => {
+    try {
+      if (!payload.sender.login.includes('bot')) {
+        logger.info(`Received a label event for #${payload?.label?.name}`);
 
-      let pr = await PullRequestService.getPullRequestById(payload?.pull_request?.id.toString());
-      if (!pr) {
-        logger.info(`Pull request not found. Creating new pull request ...`);
-        const files = await analyzePullRequest(
-          octokit,
-          payload.repository.owner.login,
-          payload.repository.name,
-          payload.pull_request.number,
-          payload.pull_request.base.ref,
-          payload.pull_request.head.ref
+        let pr = await PullRequestService.getPullRequestById(
+          payload?.pull_request?.id.toString()
         );
+        if (!pr) {
+          logger.info(`Pull request not found. Creating new pull request ...`);
+          const files = await analyzePullRequest(
+            octokit,
+            payload.repository.owner.login,
+            payload.repository.name,
+            payload.pull_request.number,
+            payload.pull_request.base.ref,
+            payload.pull_request.head.ref
+          );
 
-        const reviewDifficulty = await calculateReviewDifficultyOfPR(files);
-        pr = await PullRequestService.initiatePullRequestCreationFlow(payload, reviewDifficulty);
+          const reviewDifficulty = await calculateReviewDifficultyOfPR(files);
+          pr = await PullRequestService.initiatePullRequestCreationFlow(
+            payload,
+            reviewDifficulty
+          );
+        }
+        pr.labels = payload?.pull_request?.labels?.map((labels) => labels.name);
+        await PullRequestService.updatePullRequest(pr);
+        logger.info(`Pull request updated successfully`);
       }
-      pr.labels = payload?.pull_request?.labels?.map((labels) => labels.name);
-      await PullRequestService.updatePullRequest(pr);
-      logger.info(`Pull request updated successfully`);
-    }
-  } catch (error) {
-    const customError = error as CustomError;
-    if (customError.response) {
-      logger.error(`Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`);
-    } else {
-      logger.error(error);
+    } catch (error) {
+      const customError = error as CustomError;
+      if (customError.response) {
+        logger.error(
+          `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
+        );
+      } else {
+        logger.error(error);
+      }
     }
   }
-});
+);
 
 app.webhooks.on('pull_request.closed', async ({ octokit, payload }) => {
   try {
-    const requests = await PRReviewRequestService.findByPRId(payload?.pull_request?.id?.toString());
+    const requests = await PRReviewRequestService.findByPRId(
+      payload?.pull_request?.id?.toString()
+    );
     if (requests) {
       await PRReviewRequestService.deleteRequest(requests);
     }
   } catch (error) {
     const customError = error as CustomError;
     if (customError.response) {
-      logger.error(`Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`);
+      logger.error(
+        `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
+      );
     } else {
       logger.error(error);
     }
@@ -236,7 +280,9 @@ app.webhooks.on('pull_request.closed', async ({ octokit, payload }) => {
 });
 
 app.webhooks.on('pull_request', async ({ octokit, payload }) => {
-  logger.info(`Received a pull request event for #${payload.pull_request.number}`);
+  logger.info(
+    `Received a pull request event for #${payload.pull_request.number}`
+  );
   try {
     await prioritizePullRequest(
       octokit as any,
@@ -247,11 +293,11 @@ app.webhooks.on('pull_request', async ({ octokit, payload }) => {
   } catch (error) {
     const customError = error as CustomError;
     if (customError.response) {
-      logger.error(`Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`);
+      logger.error(
+        `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
+      );
     } else {
       logger.error(error);
     }
   }
-
-  }
-);
+});
