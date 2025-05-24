@@ -12,3 +12,8 @@ output "cluster_name" {
   description = "EKS cluster name"
   value       = module.eks.cluster_name
 }
+
+output "webhook_url" {
+  description = "GitHub webhook URL"
+  value       = "http://${aws_lb.webhook.dns_name}"
+}
