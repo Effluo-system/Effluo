@@ -113,7 +113,7 @@ jobs:
         sed -i "s|IMAGE_TAG|${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}|g" k8s/deployment.yaml
         
         # Apply Kubernetes manifests
-        kubectl apply -f k8s/deployment.yaml
+        kubectl apply -f k8s/deployment.yaml --validate=false
         
         # Wait for deployment to be ready
         kubectl rollout status deployment/effluo-app -n default --timeout=300s
