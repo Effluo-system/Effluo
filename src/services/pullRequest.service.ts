@@ -181,16 +181,16 @@ export class PullRequestService {
     }
   }
 
-  public static async getPullRequestByNumberAndRepoName(
+  public static async getPullRequestByNumberAndRepoId(
     number: number,
-    repoName: string
+    repoId: string
   ): Promise<PullRequest | null> {
     try {
       return this.pullRequestRepository.findOne({
         where: {
           number,
           repository: {
-            full_name: repoName,
+            id: repoId,
           },
         },
         relations: ['repository'],

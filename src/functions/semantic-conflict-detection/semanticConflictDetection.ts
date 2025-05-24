@@ -1,9 +1,10 @@
-import axios from 'axios';
+//import axios from 'axios';
 import { PRDiffFile } from '../../types/common';
 import { PrConflictAnalysisService } from '../../services/prConflictAnalysis.service.ts';
 import { PrFeedback } from '../../entities/prFeedback.entity.ts';
 import { AppDataSource } from '../../server/server.ts';
 import { logger } from '../../utils/logger.ts';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Type for GitHub content response--------------------------------------------------------------------------------------------------------
 interface GitHubContentResponse {
@@ -196,6 +197,14 @@ export async function analyzeConflicts(
     console.log("No modified files found for conflict analysis.");
     return "### Semantic Conflict Analysis\n\nNo modified files found for conflict analysis.";
   }
+ const apiKey = process.env.GEMINI_API_KEY;
+if (!apiKey) {
+  throw new Error("GEMINI_API_KEY is not defined in environment variables.");
+}
+
+const genAI = new GoogleGenerativeAI(apiKey);
+
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
   const results = [];
   let conflictDetected = false;
@@ -221,39 +230,23 @@ Return a JSON object with:
 "explanation": "a comprehensive description including the reason and relevant code snippets of the places where the semantic conflict occurs"
 }
 
-Do not format the response with triple backticks (\` \`\`\` \`) or add \`json\` tags.
+Do not format the response with triple backticks (\`\`\`) or add \`json\` tags.
 Strictly adhere to all guidelines.
 `;
 
     try {
-      const response = await axios.post(
-        "http://localhost:11434/api/generate",
-        {
-          model: "qwen",
-          prompt: prompt,
-          format: "json",
-          stream: false,
-          keep_alive: -1,
-        },
-        { headers: { "Content-Type": "application/json" } }
-      );
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      });
 
-      if (!response.data || !response.data.response) {
-        console.error(`AI API returned an empty response for file: ${file.filename}`);
-        results.push({
-          filename: file.filename,
-          conflict: false,
-          explanation: "Error: AI API returned an empty response."
-        });
-        continue;
-      }
-      console.log(response);
+      const raw = result.response.text();
+
       let responseData;
       try {
-        responseData = JSON.parse(response.data.response);
+        responseData = JSON.parse(raw);
       } catch (jsonError) {
         console.error(`JSON parsing error for file ${file.filename}:`, jsonError);
-        console.error("Raw AI response (before parsing error):", response.data.response);
+        console.error("Raw AI response (before parsing error):", raw);
         results.push({
           filename: file.filename,
           conflict: false,
@@ -276,6 +269,7 @@ Strictly adhere to all guidelines.
           explanation: "No conflicts detected in this file."
         });
       }
+
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error(`Error analyzing conflicts for file ${file.filename}:`, error);
@@ -285,6 +279,23 @@ Strictly adhere to all guidelines.
         explanation: `Error: Failed to analyze file (${errorMessage})`
       });
     }
+
+    /*
+    // Old Ollama local call (commented out)
+    try {
+      const response = await axios.post(
+        "http://localhost:11434/api/generate",
+        {
+          model: "qwen",
+          prompt: prompt,
+          format: "json",
+          stream: false,
+          keep_alive: -1,
+        },
+        { headers: { "Content-Type": "application/json" } }
+      );
+      ...
+    */
   }
 
   if (conflictDetected) {
@@ -298,6 +309,7 @@ Strictly adhere to all guidelines.
     return "### Semantic Conflict Analysis\n\nNo semantic conflicts detected across all modified files.";
   }
 }
+
 
 // Functions for handling conflict feedback and validation---------------------------------------------------------------------------------------------------
 export async function postAIValidationForm(

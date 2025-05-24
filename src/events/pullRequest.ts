@@ -1,23 +1,18 @@
 import { app } from '../config/appConfig.ts';
+import { prioritizePullRequest } from '../functions/pr-prioritization/pr-prioritization.ts';
+import {
+  analyzeConflicts,
+  analyzePullRequest,
+  analyzePullRequest2,
+  handleConflictAnalysis,
+  logConflictFeedback,
+} from '../functions/semantic-conflict-detection/semanticConflictDetection.ts';
+import { calculateReviewDifficultyOfPR } from '../functions/workload-calculation/workloadCalculation.ts';
+import { PrConflictAnalysisService } from '../services/prConflictAnalysis.service.ts';
+import { PRReviewRequestService } from '../services/prReviewRequest.service.ts';
 import { PullRequestService } from '../services/pullRequest.service.ts';
 import { CustomError } from '../types/common.d';
 import { logger } from '../utils/logger.ts';
-import {
-  analyzePullRequest,
-  analyzePullRequest2,
-  analyzeConflicts,
-  postAIValidationForm,
-  logConflictFeedback,
-  handleConflictAnalysis,
-} from '../functions/semantic-conflict-detection/semanticConflictDetection.ts';
-import { calculateReviewDifficultyOfPR } from '../functions/workload-calculation/workloadCalculation.ts';
-import { PullRequest } from '../entities/pullRequest.entity.ts';
-import { AppDataSource } from '../server/server.ts';
-import { PrFeedback } from '../entities/prFeedback.entity.ts';
-import { prioritizePullRequest } from '../functions/pr-prioritization/pr-prioritization.ts';
-import { PRReviewRequestService } from '../services/prReviewRequest.service.ts';
-import { PrConflictAnalysisService } from '../services/prConflictAnalysis.service.ts';
-import { processPriorityFeedback } from '../functions/pr-prioritization/pr-prioritization.ts';
 
 app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
   logger.info(
