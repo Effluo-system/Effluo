@@ -16,102 +16,103 @@ spec:
         app: effluo-app
     spec:
       containers:
-      - name: effluo-app
-        image: IMAGE_TAG  # Replaced dynamically by CI/CD
-        imagePullPolicy: Always  # Moved here from pod spec
-        ports:
-        - containerPort: 3000
-          protocol: TCP
-        env:
-        - name: NODE_ENV
-          value: "production"
-        - name: PORT
-          value: "3000"
-        - name: DATABASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: effluo-secrets
-              key: DATABASE_URL
-        - name: DB_HOST
-          value: "effluo-db.c8vqoiwgcoek.us-east-1.rds.amazonaws.com"
-        - name: DB_PORT
-          value: "5432"
-        - name: DB_NAME
-          value: "effluo"
-        - name: DB_USER
-          valueFrom:
-            secretKeyRef:
-              name: effluo-secrets
-              key: DB_USER
-        - name: DB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: effluo-secrets
-              key: DB_PASSWORD
-        - name: APP_ID
-          valueFrom:
-            secretKeyRef:
-              name: effluo-secrets
-              key: APP_ID
-        - name: WEBHOOK_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: effluo-secrets
-              key: WEBHOOK_SECRET
-        - name: GITHUB_CLIENT_ID
-          valueFrom:
-            secretKeyRef:
-              name: effluo-secrets
-              key: GITHUB_CLIENT_ID
-        - name: GITHUB_CLIENT_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: effluo-secrets
-              key: GITHUB_CLIENT_SECRET
-        - name: GITHUB_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: effluo-secrets
-              key: GITHUB_TOKEN
-        - name: GEMINI_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: effluo-secrets
-              key: GEMINI_API_KEY
-        - name: PRIVATE_KEY_PATH
-          value: "/app/secrets/private-key.pem"
-        resources:
-          requests:
-            memory: "128Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 3000
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 3000
-          initialDelaySeconds: 5
-          periodSeconds: 5
-          timeoutSeconds: 3
-          failureThreshold: 3
-        volumeMounts:
-        - name: github-private-key
-          mountPath: /app/secrets
-          readOnly: true
+        - name: effluo-app
+          image: IMAGE_TAG # Replaced dynamically by CI/CD
+          imagePullPolicy: Always # Moved here from pod spec
+          ports:
+            - containerPort: 3000
+            - containerPort: 3001
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: 'production'
+            - name: PORT
+              value: '3000'
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: DATABASE_URL
+            - name: DB_HOST
+              value: 'effluo-db.c8vqoiwgcoek.us-east-1.rds.amazonaws.com'
+            - name: DB_PORT
+              value: '5432'
+            - name: DB_NAME
+              value: 'effluo'
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: DB_PASSWORD
+            - name: APP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: APP_ID
+            - name: WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: WEBHOOK_SECRET
+            - name: GITHUB_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: GITHUB_CLIENT_ID
+            - name: GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: GITHUB_CLIENT_SECRET
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: GITHUB_TOKEN
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: GEMINI_API_KEY
+            - name: PRIVATE_KEY_PATH
+              value: '/app/secrets/private-key.pem'
+          resources:
+            requests:
+              memory: '128Mi'
+              cpu: '100m'
+            limits:
+              memory: '512Mi'
+              cpu: '500m'
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: github-private-key
+              mountPath: /app/secrets
+              readOnly: true
       volumes:
-      - name: github-private-key
-        secret:
-          secretName: effluo-github-key
-          defaultMode: 0400
+        - name: github-private-key
+          secret:
+            secretName: effluo-github-key
+            defaultMode: 0400
       # Removed: restartPolicy: Always (not valid at pod spec level in Deployment)
 ---
 apiVersion: v1
@@ -124,9 +125,9 @@ metadata:
 spec:
   type: LoadBalancer
   ports:
-  - port: 80
-    targetPort: 3000
-    protocol: TCP
-    name: http
+    - port: 80
+      targetPort: 3000
+      protocol: TCP
+      name: http
   selector:
     app: effluo-app
