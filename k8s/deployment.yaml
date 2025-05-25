@@ -106,11 +106,11 @@ metadata:
   labels:
     app: effluo-app
 spec:
-  ports:
-    - port: 80
-      targetPort: 3000
-      protocol: TCP
-      name: http
   selector:
     app: effluo-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+      protocol: TCP
   type: LoadBalancer
