@@ -80,7 +80,7 @@ export class RepoService {
         logger.error(`User is unauthorized to view repos`);
         throw new Error('unauthorized');
       }
-      const accessibleRepos = await this.getAccessibleRepos(octokit);
+      const accessibleRepos = await this.getAccessibleRepos(octokit, true);
       if (accessibleRepos.length === 0) {
         return [];
       }
@@ -112,8 +112,45 @@ export class RepoService {
     }
   }
 
-  public static async getAccessibleRepos(octokit: Octokit) {
+  public static async getAccessibleRepos(
+    octokit: Octokit,
+    effluoOnly?: boolean
+  ) {
     try {
+      if (effluoOnly) {
+        return [
+          {
+            owner: 'Effluo-system',
+            name: 'Effluo-Playground',
+            fullName: 'Effluo-system/Effluo-Playground',
+            id: 894052335,
+          },
+          {
+            owner: 'Effluo-system',
+            name: 'Effluo-project-website',
+            fullName: 'Effluo-system/Effluo-project-website',
+            id: 989928810,
+          },
+          {
+            owner: 'Effluo-system',
+            name: 'Effluo-web',
+            fullName: 'Effluo-system/Effluo-web',
+            id: 896433002,
+          },
+          {
+            owner: 'Effluo-system',
+            name: 'Effluo',
+            fullName: 'Effluo-system/Effluo',
+            id: 832197385,
+          },
+          {
+            owner: 'Effluo-system',
+            name: 'Effluo-flask',
+            fullName: 'Effluo-system/Effluo-flask',
+            id: 893953785,
+          },
+        ];
+      }
       const userRepos = await octokit.paginate(
         octokit.rest.repos.listForAuthenticatedUser,
         {
@@ -136,7 +173,6 @@ export class RepoService {
       if (accessibleRepos.length === 0) {
         return [];
       }
-
       return accessibleRepos;
     } catch (error) {
       logger.error((error as Error).message);
