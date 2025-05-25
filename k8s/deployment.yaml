@@ -82,10 +82,10 @@ spec:
               value: '/app/secrets/private-key.pem'
           resources:
             requests:
-              memory: '128Mi'
-              cpu: '100m'
+              memory: '256Mi'
+              cpu: '200m'
             limits:
-              memory: '512Mi'
+              memory: '1Gi' # bumped from 512Mi to 1Gi (1024Mi)
               cpu: '500m'
           # livenessProbe:
           #   httpGet:
