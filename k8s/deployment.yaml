@@ -18,7 +18,7 @@ spec:
       containers:
         - name: effluo-app
           image: IMAGE_TAG # Replaced dynamically by CI/CD
-          imagePullPolicy: Always # Moved here from pod spec
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
               protocol: TCP
@@ -85,7 +85,7 @@ spec:
               memory: '256Mi'
               cpu: '200m'
             limits:
-              memory: '1Gi' # bumped from 512Mi to 1Gi (for future reference)
+              memory: '1Gi'
               cpu: '500m'
           volumeMounts:
             - name: github-private-key
