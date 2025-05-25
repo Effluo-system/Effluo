@@ -106,7 +106,6 @@ metadata:
   labels:
     app: effluo-app
 spec:
-  type: LoadBalancer
   ports:
     - port: 80
       targetPort: 3000
@@ -114,3 +113,4 @@ spec:
       name: http
   selector:
     app: effluo-app
+  type: LoadBalancer
