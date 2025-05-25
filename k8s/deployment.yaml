@@ -85,24 +85,8 @@ spec:
               memory: '256Mi'
               cpu: '200m'
             limits:
-              memory: '1Gi' # bumped from 512Mi to 1Gi (1024Mi)
+              memory: '1Gi' # bumped from 512Mi to 1Gi (for future reference)
               cpu: '500m'
-          # livenessProbe:
-          #   httpGet:
-          #     path: /health
-          #     port: 3000
-          #   initialDelaySeconds: 60
-          #   periodSeconds: 15
-          #   timeoutSeconds: 20
-          #   failureThreshold: 5
-          # readinessProbe:
-          #   httpGet:
-          #     path: /health
-          #     port: 3000
-          #   initialDelaySeconds: 5
-          #   periodSeconds: 5
-          #   timeoutSeconds: 3
-          #   failureThreshold: 3
           volumeMounts:
             - name: github-private-key
               mountPath: /app/secrets
@@ -112,7 +96,7 @@ spec:
           secret:
             secretName: effluo-github-key
             defaultMode: 0400
-      # Removed: restartPolicy: Always (not valid at pod spec level in Deployment)
+
 ---
 apiVersion: v1
 kind: Service

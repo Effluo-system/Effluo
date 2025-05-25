@@ -33,13 +33,6 @@ export const startServer = async () => {
       logger.info('Press Ctrl + C to quit.');
     });
 
-    // temporary endpoint to check probing issue
-    server.on('request', (req, res) => {
-      logger.info(`Received request on port ${env.port}`);
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('OK');
-    });
-
     app.listen(3001, () => {
       logger.info(`Server is listening for events at port 3001`);
       logger.info('Press Ctrl + C to quit.');
