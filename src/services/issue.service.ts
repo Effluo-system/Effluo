@@ -159,12 +159,22 @@ export class IssueService {
       const octokit = new Octokit({
         auth: token,
       });
-      const { data } = await octokit.rest.users.getAuthenticated();
+      const response = await octokit.rest.users.getAuthenticated();
+      const { data } = response;
+
+      // Log rate limit info
+      console.log('🔥 API Rate Limit Info:', {
+        remaining: response.headers['x-ratelimit-remaining'],
+        used: response.headers['x-ratelimit-used'],
+      });
       if (!data?.login) {
         logger.error(`User is unauthorized to view issues`);
         throw new Error('unauthorized');
       }
-      const accessibleRepos = await RepoService.getAccessibleRepos(octokit);
+      const accessibleRepos = await RepoService.getAccessibleRepos(
+        octokit,
+        true
+      );
 
       const repos = await this.issueRepository.find({
         where: {

@@ -145,7 +145,7 @@ export const fetchSummaryForEachRepo = async (
     } else if (
       areSummariesEqual(previousSummary.review_summary, newSummary[repoId])
     ) {
-      logger.debug(
+      logger.info(
         `Summary for repo ${repoId} has not changed. Skipping pipeline creation`
       );
       return;
@@ -258,7 +258,7 @@ export const findMostSuitableDev = async (
         const totalWorkload =
           (reviewRequestWorkload ?? 0) + (issueWorkload ?? 0);
 
-        if (totalWorkload < 500) {
+        if (totalWorkload < 100) {
           result[repoId][category] = user.user; // Assign the user
           break; // Stop searching for this category
         }
