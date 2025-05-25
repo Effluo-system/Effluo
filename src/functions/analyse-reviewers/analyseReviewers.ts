@@ -47,6 +47,7 @@ export const analyzeReviewers = async () => {
         repoData[repoId][user][label] = repoData[repoId][user][label] + 1;
       });
     });
+
     logger.debug('Summary created');
     // const metrics = findMostWorkedInCategory(repoData);
     const ranks = rankDevelopersByCategory(repoData);
@@ -115,6 +116,7 @@ export const fetchSummaryForEachRepo = async (
   newSummary: FrequencySummaryResult
 ) => {
   logger.debug('Fetching previous summary for each repo ...');
+
   Object.keys(newSummary).forEach(async (repoId) => {
     const previousSummary = await UserReviewSummaryService.getSummaryByRepoId(
       repoId
@@ -234,8 +236,12 @@ export const findMostSuitableDev = async (
 
     for (const category of Object.keys(categoryWise)) {
       const userRankings = categoryWise[category];
+      let selectedUser: string | null = null;
+      let lowestWorkload = Infinity;
 
+      // First, try to find someone with workload < 100
       for (const user of userRankings) {
+        console.log(user);
         const currentReviewRequests =
           await PRReviewRequestService.findByUserLoginAndRepoID(
             user.user,
@@ -257,11 +263,28 @@ export const findMostSuitableDev = async (
 
         const totalWorkload =
           (reviewRequestWorkload ?? 0) + (issueWorkload ?? 0);
+        console.log(`${user.user} workload: ${totalWorkload}`);
 
-        if (totalWorkload < 100) {
-          result[repoId][category] = user.user; // Assign the user
-          break; // Stop searching for this category
+        // Keep track of the user with lowest workload as fallback
+        if (totalWorkload < lowestWorkload) {
+          lowestWorkload = totalWorkload;
+          selectedUser = user.user;
         }
+
+        // If we find someone with workload < 100, assign them immediately
+        if (totalWorkload < 100) {
+          result[repoId][category] = user.user;
+          selectedUser = null; // Clear fallback since we found ideal candidate
+          break;
+        }
+      }
+
+      // If no one has workload < 100, assign the person with lowest workload
+      if (selectedUser !== null) {
+        result[repoId][category] = selectedUser;
+        console.log(
+          `No developer with workload < 100 found for ${category}. Assigned ${selectedUser} with workload ${lowestWorkload}`
+        );
       }
     }
   }
