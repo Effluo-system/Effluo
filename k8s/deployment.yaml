@@ -38,11 +38,11 @@ spec:
               value: '5432'
             - name: DB_NAME
               value: 'effluo'
-            - name: DB_USER
+            - name: DB_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: effluo-secrets
-                  key: DB_USER
+                  key: DB_USERNAME
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
