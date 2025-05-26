@@ -21,65 +21,55 @@ if ! kubectl cluster-info &> /dev/null; then
     exit 1
 fi
 
-# === EARLY GitHub private key file path prompt and check ===
+# === GitHub Private Key Setup ===
 echo -e "${BLUE}=== GitHub Private Key Setup ===${NC}"
-echo -e "${YELLOW}Enter the path to your GitHub App private key file:${NC}"
-read PRIVATE_KEY_PATH
+read -rp "$(echo -e ${YELLOW}Enter the path to your GitHub App private key file:${NC} )" PRIVATE_KEY_PATH
+PRIVATE_KEY_PATH="${PRIVATE_KEY_PATH//\\//}"  # Windows path compatibility
 
-# Convert backslashes to forward slashes for Windows path compatibility
-PRIVATE_KEY_PATH="${PRIVATE_KEY_PATH//\\//}"
-
-# Check if private key file exists
 if [ ! -f "$PRIVATE_KEY_PATH" ]; then
     echo -e "${RED}Error: Private key file not found at $PRIVATE_KEY_PATH${NC}"
     exit 1
 fi
 
-# Database configuration from Terraform output
+# Database configuration from Terraform output (you may replace these with dynamic `terraform output` calls)
 DB_HOST="effluo-db.cujkukuacaqk.us-east-1.rds.amazonaws.com"
 DB_PORT="5432"
 DB_NAME="effluo"
 DB_USER="postgres"
 
 echo -e "${BLUE}=== Database Configuration ===${NC}"
-echo -e "${YELLOW}Enter your database password:${NC}"
-read -s DB_PASSWORD
+read -rsp "$(echo -e ${YELLOW}Enter your database password:${NC} )" DB_PASSWORD
+echo
 
 if [ -z "$DB_PASSWORD" ]; then
     echo -e "${RED}Error: Password cannot be empty${NC}"
     exit 1
 fi
 
+# GitHub App Config
 echo -e "${BLUE}=== GitHub App Configuration ===${NC}"
-echo -e "${YELLOW}Enter your GitHub App ID:${NC}"
-read APP_ID
+read -rp "$(echo -e ${YELLOW}Enter your GitHub App ID:${NC} )" APP_ID
+read -rsp "$(echo -e ${YELLOW}Enter your GitHub Webhook Secret:${NC} )" WEBHOOK_SECRET
+echo
+read -rp "$(echo -e ${YELLOW}Enter your GitHub Client ID:${NC} )" GITHUB_CLIENT_ID
+read -rsp "$(echo -e ${YELLOW}Enter your GitHub Client Secret:${NC} )" GITHUB_CLIENT_SECRET
+echo
+read -rsp "$(echo -e ${YELLOW}Enter your GitHub Token:${NC} )" GITHUB_TOKEN
+echo
 
-echo -e "${YELLOW}Enter your GitHub Webhook Secret:${NC}"
-read -s WEBHOOK_SECRET
-
-echo -e "${YELLOW}Enter your GitHub Client ID:${NC}"
-read GITHUB_CLIENT_ID
-
-echo -e "${YELLOW}Enter your GitHub Client Secret:${NC}"
-read -s GITHUB_CLIENT_SECRET
-
-echo -e "${YELLOW}Enter your GitHub Token:${NC}"
-read -s GITHUB_TOKEN
-
+# API Keys
 echo -e "${BLUE}=== API Keys ===${NC}"
-echo -e "${YELLOW}Enter your Gemini API Key:${NC}"
-read -s GEMINI_API_KEY
+read -rsp "$(echo -e ${YELLOW}Enter your Gemini API Key:${NC} )" GEMINI_API_KEY
+echo
 
-# Create the full database URL
+# Construct DATABASE_URL
 DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
 
+# Create or update Kubernetes secrets
 echo -e "${GREEN}Creating Kubernetes secrets...${NC}"
-
-# Delete existing secrets if they exist (ignore errors)
 kubectl delete secret effluo-secrets --ignore-not-found=true
 kubectl delete secret effluo-github-key --ignore-not-found=true
 
-# Create the main application secret
 kubectl create secret generic effluo-secrets \
     --from-literal=DATABASE_URL="$DATABASE_URL" \
     --from-literal=DB_USER="$DB_USER" \
@@ -94,13 +84,12 @@ kubectl create secret generic effluo-secrets \
     --from-literal=GITHUB_TOKEN="$GITHUB_TOKEN" \
     --from-literal=GEMINI_API_KEY="$GEMINI_API_KEY"
 
-# Create a separate secret for the private key file
 kubectl create secret generic effluo-github-key \
     --from-file=private-key.pem="$PRIVATE_KEY_PATH"
 
 echo -e "${GREEN}✅ Secrets created successfully!${NC}"
 
-# Verify the secrets
+# Verify
 echo -e "${GREEN}Verifying secrets...${NC}"
 kubectl get secret effluo-secrets
 kubectl get secret effluo-github-key
@@ -108,8 +97,8 @@ kubectl get secret effluo-github-key
 echo -e "${GREEN}🎉 Setup complete! You can now deploy your application.${NC}"
 echo -e "${YELLOW}Next steps:${NC}"
 echo "1. Push your code to the main branch to trigger the CI/CD pipeline"
-echo "2. Monitor the deployment: kubectl get pods -w"
-echo "3. Check the service: kubectl get svc effluo-app-service"
+echo "2. Monitor deployment: kubectl get pods -w"
+echo "3. Check service status: kubectl get svc effluo-app-service"
 
 echo -e "${BLUE}Secret summary:${NC}"
 echo "• effluo-secrets: Contains all API keys and database credentials"
