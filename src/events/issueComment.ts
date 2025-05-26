@@ -1,5 +1,8 @@
 import { app } from '../config/appConfig.ts';
-import { prioritizePullRequest , processPriorityFeedback } from '../functions/pr-prioritization/pr-prioritization.ts';
+import {
+  prioritizePullRequest,
+  processPriorityFeedback,
+} from '../functions/pr-prioritization/pr-prioritization.ts';
 import {
   checkForCommitResolutionCommands,
   resolveAllConflicts,
@@ -24,6 +27,7 @@ app.webhooks.on(['issue_comment.created'], async ({ octokit, payload }) => {
     const { applyAll, commentId, user, commandTimestamp } =
       await checkForCommitResolutionCommands(
         octokit as any,
+        payload.repository.id.toString(),
         payload.repository.owner.login,
         payload.repository.name,
         payload.issue.number
@@ -45,6 +49,7 @@ app.webhooks.on(['issue_comment.created'], async ({ octokit, payload }) => {
 
       const success = await resolveAllConflicts(
         octokit as any,
+        payload.repository.id.toString(),
         payload.repository.owner.login,
         payload.repository.name,
         payload.issue.number
@@ -111,12 +116,11 @@ app.webhooks.on(['issue_comment.created'], async ({ octokit, payload }) => {
     const currentComment = payload.comment;
 
     //check if the comment is an priority feedback comment
-    const isPriorityFeedbackComment = 
-        currentComment.body?.toUpperCase().startsWith('CONFIRM') ||
-        currentComment.body?.toUpperCase().startsWith('HIGH') ||
-        currentComment.body?.toUpperCase().startsWith('MEDIUM') ||
-        currentComment.body?.toUpperCase().startsWith('LOW')
-    
+    const isPriorityFeedbackComment =
+      currentComment.body?.toUpperCase().startsWith('CONFIRM') ||
+      currentComment.body?.toUpperCase().startsWith('HIGH') ||
+      currentComment.body?.toUpperCase().startsWith('MEDIUM') ||
+      currentComment.body?.toUpperCase().startsWith('LOW');
 
     if (isPriorityFeedbackComment) {
       logger.info('Priority feedback comment found. Processing...');
@@ -125,8 +129,9 @@ app.webhooks.on(['issue_comment.created'], async ({ octokit, payload }) => {
         octokit as any,
         payload.repository.owner.login,
         payload.repository.name,
-        payload.issue.number)
-    } else{
+        payload.issue.number
+      );
+    } else {
       await prioritizePullRequest(
         octokit as any,
         payload.repository.owner.login,

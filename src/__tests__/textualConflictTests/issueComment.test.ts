@@ -55,6 +55,7 @@ describe('Issue Comment Handler', () => {
       const { applyAll, commentId, user, commandTimestamp } =
         await textualMergeConflictResolution.checkForCommitResolutionCommands(
           octokit as any,
+          payload.repository.id.toString(),
           payload.repository.owner.login,
           payload.repository.name,
           payload.issue.number
@@ -74,6 +75,7 @@ describe('Issue Comment Handler', () => {
         const success =
           await textualMergeConflictResolution.resolveAllConflicts(
             octokit as any,
+            payload.repository.id.toString(),
             payload.repository.owner.login,
             payload.repository.name,
             payload.issue.number
@@ -121,6 +123,7 @@ describe('Issue Comment Handler', () => {
     // Create base mock payload
     mockPayload = {
       repository: {
+        id: 'repo-123',
         owner: {
           login: 'test-owner',
         },
@@ -197,7 +200,13 @@ describe('Issue Comment Handler', () => {
     // Verify that we checked for commands
     expect(
       textualMergeConflictResolution.checkForCommitResolutionCommands
-    ).toHaveBeenCalledWith(mockOctokit, 'test-owner', 'test-repo', 123);
+    ).toHaveBeenCalledWith(
+      mockOctokit,
+      'repo-123',
+      'test-owner',
+      'test-repo',
+      123
+    );
 
     // But didn't attempt to apply resolutions
     expect(
@@ -235,7 +244,13 @@ describe('Issue Comment Handler', () => {
     // Verify that we checked for commands
     expect(
       textualMergeConflictResolution.checkForCommitResolutionCommands
-    ).toHaveBeenCalledWith(mockOctokit, 'test-owner', 'test-repo', 123);
+    ).toHaveBeenCalledWith(
+      mockOctokit,
+      'repo-123',
+      'test-owner',
+      'test-repo',
+      123
+    );
 
     // Verify that we reacted to the comment
     expect(
@@ -250,7 +265,13 @@ describe('Issue Comment Handler', () => {
     // Verify that we attempted to apply resolutions
     expect(
       textualMergeConflictResolution.resolveAllConflicts
-    ).toHaveBeenCalledWith(mockOctokit, 'test-owner', 'test-repo', 123);
+    ).toHaveBeenCalledWith(
+      mockOctokit,
+      'repo-123',
+      'test-owner',
+      'test-repo',
+      123
+    );
 
     // Verify that we reacted with success
     expect(

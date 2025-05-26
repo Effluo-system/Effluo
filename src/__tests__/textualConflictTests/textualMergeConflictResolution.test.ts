@@ -49,6 +49,7 @@ vi.mock('../../services/mergeConflict.service', () => ({
 vi.mock('../../services/repo.service', () => ({
   RepoService: {
     getRepoByOwnerAndName: vi.fn(),
+    getRepoById: vi.fn(),
   },
 }));
 
@@ -280,6 +281,12 @@ describe('Textual Merge Conflict Resolution', () => {
         id: 'repo-123',
       });
 
+      (RepoService.getRepoById as any).mockResolvedValue({
+        id: 'repo-123',
+        owner: { login: 'test-owner' },
+        name: 'test-repo',
+      });
+
       // Mock PR data
       mockOctokit.rest.pulls.get.mockResolvedValue({
         data: {
@@ -320,6 +327,7 @@ describe('Textual Merge Conflict Resolution', () => {
 
       const result = await checkForCommitResolutionCommands(
         mockOctokit,
+        'repo-123',
         'test-owner',
         'test-repo',
         123
@@ -341,7 +349,7 @@ describe('Textual Merge Conflict Resolution', () => {
 
     test('should accept commands from repository collaborators', async () => {
       // Mock repository
-      (RepoService.getRepoByOwnerAndName as any).mockResolvedValue({
+      (RepoService.getRepoById as any).mockResolvedValue({
         id: 'repo-123',
       });
 
@@ -383,6 +391,7 @@ describe('Textual Merge Conflict Resolution', () => {
 
       const result = await checkForCommitResolutionCommands(
         mockOctokit,
+        'repo-123',
         'test-owner',
         'test-repo',
         123
@@ -410,6 +419,12 @@ describe('Textual Merge Conflict Resolution', () => {
         id: 'repo-123',
       });
 
+      (RepoService.getRepoById as any).mockResolvedValue({
+        id: 'repo-123',
+        owner: { login: 'test-owner' },
+        name: 'test-repo',
+      });
+
       // Mock comments
       const mockComments = [
         {
@@ -430,6 +445,7 @@ describe('Textual Merge Conflict Resolution', () => {
 
       const result = await checkForCommitResolutionCommands(
         mockOctokit,
+        'repo-123',
         'test-owner',
         'test-repo',
         123
@@ -452,6 +468,12 @@ describe('Textual Merge Conflict Resolution', () => {
       // Mock repository
       (RepoService.getRepoByOwnerAndName as any).mockResolvedValue({
         id: 'repo-123',
+      });
+
+      (RepoService.getRepoById as any).mockResolvedValue({
+        id: 'repo-123',
+        owner: { login: 'test-owner' },
+        name: 'test-repo',
       });
 
       // Mock PR data
@@ -529,6 +551,7 @@ describe('Textual Merge Conflict Resolution', () => {
 
       const result = await resolveAllConflicts(
         mockOctokit,
+        'repo-123',
         'test-owner',
         'test-repo',
         123
@@ -610,6 +633,12 @@ describe('Textual Merge Conflict Resolution', () => {
         id: 'repo-123',
       });
 
+      (RepoService.getRepoById as any).mockResolvedValue({
+        id: 'repo-123',
+        owner: { login: 'test-owner' },
+        name: 'test-repo',
+      });
+
       // Mock empty resolutions
       // Mock PR data
       mockOctokit.rest.pulls.get.mockResolvedValue({
@@ -625,6 +654,7 @@ describe('Textual Merge Conflict Resolution', () => {
 
       const result = await resolveAllConflicts(
         mockOctokit,
+        'repo-123',
         'test-owner',
         'test-repo',
         123
@@ -653,6 +683,12 @@ describe('Textual Merge Conflict Resolution', () => {
       // Mock repository
       (RepoService.getRepoByOwnerAndName as any).mockResolvedValue({
         id: 'repo-123',
+      });
+
+      (RepoService.getRepoById as any).mockResolvedValue({
+        id: 'repo-123',
+        owner: { login: 'test-owner' },
+        name: 'test-repo',
       });
 
       // Mock PR data - First for initial get, second for the check after applying resolutions
@@ -731,6 +767,7 @@ describe('Textual Merge Conflict Resolution', () => {
 
       const result = await resolveAllConflicts(
         mockOctokit,
+        'repo-123',
         'test-owner',
         'test-repo',
         123
@@ -770,6 +807,11 @@ describe('Textual Merge Conflict Resolution', () => {
       // Mock repository
       (RepoService.getRepoByOwnerAndName as any).mockResolvedValue({
         id: 'repo-123',
+      });
+      (RepoService.getRepoById as any).mockResolvedValue({
+        id: 'repo-123',
+        owner: { login: 'test-owner' },
+        name: 'test-repo',
       });
 
       // Mock PR data
@@ -827,6 +869,7 @@ describe('Textual Merge Conflict Resolution', () => {
 
       const result = await resolveAllConflicts(
         mockOctokit,
+        'repo-123',
         'test-owner',
         'test-repo',
         123
@@ -862,6 +905,11 @@ describe('Textual Merge Conflict Resolution', () => {
       // Mock repository
       (RepoService.getRepoByOwnerAndName as any).mockResolvedValue({
         id: 'repo-123',
+      });
+      (RepoService.getRepoById as any).mockResolvedValue({
+        id: 'repo-123',
+        owner: { login: 'test-owner' },
+        name: 'test-repo',
       });
 
       // Mock PR data
@@ -921,6 +969,7 @@ describe('Textual Merge Conflict Resolution', () => {
 
       const result = await resolveAllConflicts(
         mockOctokit,
+        'repo-123',
         'test-owner',
         'test-repo',
         123
@@ -957,6 +1006,11 @@ describe('Textual Merge Conflict Resolution', () => {
       (RepoService.getRepoByOwnerAndName as any).mockResolvedValue({
         id: 'repo-123',
       });
+      (RepoService.getRepoById as any).mockResolvedValue({
+        id: 'repo-123',
+        owner: { login: 'test-owner' },
+        name: 'test-repo',
+      });
 
       // Mock PR data
       mockOctokit.rest.pulls.get.mockRejectedValue(
@@ -968,6 +1022,7 @@ describe('Textual Merge Conflict Resolution', () => {
 
       const result = await resolveAllConflicts(
         mockOctokit,
+        'repo-123',
         'test-owner',
         'test-repo',
         123

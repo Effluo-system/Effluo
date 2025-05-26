@@ -629,6 +629,7 @@ Please note there will be no further confirmation before applying all resolution
 
 export async function checkForCommitResolutionCommands(
   octokit: Octokit,
+  repoId: string,
   owner: string,
   repo: string,
   pullNumber: number
@@ -663,13 +664,9 @@ export async function checkForCommitResolutionCommands(
     let applyAllUser: string | undefined;
     let commandTimestamp: string | undefined;
 
-    const repoFullname = `${owner}/${repo}`;
-    const repoEntity = await RepoService.getRepoByOwnerAndName(
-      owner,
-      repoFullname
-    );
+    const repoEntity = await RepoService.getRepoById(repoId);
     if (!repoEntity) {
-      logger.error(`Repository ${owner}/${repo} not found in database`);
+      logger.error(`Repository with ID:${repoId} not found in database`);
       return { applyAll: false };
     }
 
@@ -781,6 +778,7 @@ export async function checkForCommitResolutionCommands(
 
 export async function resolveAllConflicts(
   octokit: Octokit,
+  repoId: string,
   owner: string,
   repo: string,
   pullNumber: number
@@ -789,12 +787,9 @@ export async function resolveAllConflicts(
 
   try {
     const repoFullname = `${owner}/${repo}`;
-    const repoEntity = await RepoService.getRepoByOwnerAndName(
-      owner,
-      repoFullname
-    );
+    const repoEntity = await RepoService.getRepoById(repoId);
     if (!repoEntity) {
-      logger.error(`Repository ${owner}/${repo} not found in database`);
+      logger.error(`Repository with ID:${repoId} not found in database`);
       return false;
     }
 
