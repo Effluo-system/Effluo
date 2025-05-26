@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "start": "node dist/app.js",
+    "start": "node --loader ts-node/esm src/app.ts",
     "build": "tsc",
     "lint": "standard \"src/**/*.ts\"",
     "test": "vitest",

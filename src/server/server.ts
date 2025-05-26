@@ -4,14 +4,13 @@ import http from 'http';
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { env } from '../config/env.ts';
-import { PATH } from '../constants/common.constants.ts';
 import dbConfig from '../database/db.config.ts';
 import { logger } from '../utils/logger.ts';
 import { logIncomingTraffic } from './loggerMiddleware.ts';
 import { middleware } from './middleware.ts';
 
 // const server = http.createServer(middleware);
-const localWebhookUrl = `http://localhost:${env.port}${PATH}`;
+const localWebhookUrl = `http://localhost:${env.port}`;
 
 export const AppDataSource = new DataSource(dbConfig);
 
@@ -33,6 +32,7 @@ export const startServer = async () => {
       logger.info(`Server is listening for events at: ${localWebhookUrl}`);
       logger.info('Press Ctrl + C to quit.');
     });
+
     app.listen(3001, () => {
       logger.info(`Server is listening for events at port 3001`);
       logger.info('Press Ctrl + C to quit.');

@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: effluo-app
+  namespace: default
+  labels:
+    app: effluo-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: effluo-app
+  template:
+    metadata:
+      labels:
+        app: effluo-app
+    spec:
+      containers:
+        - name: effluo-app
+          image: IMAGE_TAG
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: 'production'
+            - name: PORT
+              value: '3000'
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: DATABASE_URL
+            - name: DB_HOST
+              value: 'effluo-db.c8vqoiwgcoek.us-east-1.rds.amazonaws.com'
+            - name: DB_PORT
+              value: '5432'
+            - name: DB_NAME
+              value: 'effluo'
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: DB_PASSWORD
+            - name: APP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: APP_ID
+            - name: WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: WEBHOOK_SECRET
+            - name: GITHUB_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: GITHUB_CLIENT_ID
+            - name: GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: GITHUB_CLIENT_SECRET
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: GITHUB_TOKEN
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: effluo-secrets
+                  key: GEMINI_API_KEY
+            - name: PRIVATE_KEY_PATH
+              value: '/app/secrets/private-key.pem'
+          resources:
+            requests:
+              memory: '256Mi'
+              cpu: '200m'
+            limits:
+              memory: '1Gi'
+              cpu: '500m'
+          volumeMounts:
+            - name: github-private-key
+              mountPath: /app/secrets
+              readOnly: true
+      volumes:
+        - name: github-private-key
+          secret:
+            secretName: effluo-github-key
+            defaultMode: 0400
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: effluo-app-service
+  namespace: default
+  labels:
+    app: effluo-app
+spec:
+  selector:
+    app: effluo-app
+  ports:
+    - port: 80 
+      targetPort: 3000
+      protocol: TCP
+      name: http
+  type: LoadBalancer
