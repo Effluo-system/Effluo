@@ -31,8 +31,8 @@ jobs:
       - name: Install dependencies
         run: npm install --force
 
-      # - name: Run tests
-      #   run: npm test
+      - name: Run tests
+        run: npm test
 
       - name: Run build
         run: npm run build
