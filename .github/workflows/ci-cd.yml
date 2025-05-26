@@ -9,7 +9,7 @@ on:
 env:
   AWS_REGION: us-east-1
   EKS_CLUSTER_NAME: effluo-eks-cluster
-  EKS_CLUSTER_ENDPOINT: https://F31EA54302C37E9E11F860A2D3B15F85.yl4.us-east-1.eks.amazonaws.com
+  EKS_CLUSTER_ENDPOINT: https://5D69D897909EC8CB0828982511066EDE.gr7.us-east-1.eks.amazonaws.com
   DOCKER_IMAGE_NAME: effluo-app
   RDS_ENDPOINT: effluo-db.c8vqoiwgcoek.us-east-1.rds.amazonaws.com:5432
   DATABASE_NAME: effluo
