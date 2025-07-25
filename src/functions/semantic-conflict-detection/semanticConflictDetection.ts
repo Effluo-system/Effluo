@@ -1,10 +1,10 @@
 //import axios from 'axios';
-import { PRDiffFile } from '../../types/common';
-import { PrConflictAnalysisService } from '../../services/prConflictAnalysis.service.ts';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { PrFeedback } from '../../entities/prFeedback.entity.ts';
 import { AppDataSource } from '../../server/server.ts';
+import { PrConflictAnalysisService } from '../../services/prConflictAnalysis.service.ts';
+import { CustomError, PRDiffFile } from '../../types/common';
 import { logger } from '../../utils/logger.ts';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Type for GitHub content response--------------------------------------------------------------------------------------------------------
 interface GitHubContentResponse {
@@ -33,11 +33,11 @@ export async function fetchFileContent(
       ref: branch,
     });
 
-    if (!("content" in response.data) || response.data.type !== "file") {
+    if (!('content' in response.data) || response.data.type !== 'file') {
       return null;
     }
 
-    return Buffer.from(response.data.content, "base64").toString("utf8");
+    return Buffer.from(response.data.content, 'base64').toString('utf8');
   } catch (error) {
     console.error(`Skipping ${filePath} on branch ${branch} (File not found).`);
     return null;
@@ -48,7 +48,7 @@ export function getReferencedFiles(fileContent: string): string[] {
   const importRegex = /import\s+.*\s+from\s+['"](.*)['"]/g;
 
   const uncommentedImports = fileContent
-    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '')  
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '')
     .match(importRegex);
 
   if (!uncommentedImports) {
@@ -61,7 +61,6 @@ export function getReferencedFiles(fileContent: string): string[] {
   });
 }
 
-
 export async function fetchReferencedFiles(
   octokit: any,
   owner: string,
@@ -71,7 +70,13 @@ export async function fetchReferencedFiles(
 ): Promise<{ path: string; content: string }[]> {
   const files = await Promise.all(
     filePaths.map(async (filePath) => {
-      const content = await fetchFileContent(octokit, owner, repo, filePath, branch);
+      const content = await fetchFileContent(
+        octokit,
+        owner,
+        repo,
+        filePath,
+        branch
+      );
       return { path: filePath, content: content || '' };
     })
   );
@@ -96,10 +101,28 @@ export async function analyzePullRequest(
   const analysisDetails = [];
   for (const file of changedFiles.data) {
     const { filename } = file;
-    const baseContent = await fetchFileContent(octokit, owner, repo, filename, baseBranch);
-    const headContent = await fetchFileContent(octokit, owner, repo, filename, headBranch);
+    const baseContent = await fetchFileContent(
+      octokit,
+      owner,
+      repo,
+      filename,
+      baseBranch
+    );
+    const headContent = await fetchFileContent(
+      octokit,
+      owner,
+      repo,
+      filename,
+      headBranch
+    );
     const dependencies = baseContent ? getReferencedFiles(baseContent) : [];
-    const referencedFiles = await fetchReferencedFiles(octokit, owner, repo, dependencies, baseBranch);
+    const referencedFiles = await fetchReferencedFiles(
+      octokit,
+      owner,
+      repo,
+      dependencies,
+      baseBranch
+    );
 
     analysisDetails.push({
       filename,
@@ -118,13 +141,21 @@ export async function analyzePullRequest2(
   prNumber: number,
   baseBranch: string,
   headBranch: string
-): Promise<{
-  filename: string;
-  baseVersionContent: string;
-  mainBranchContent: string;
-  prBranchContent: string;
-}[]> {
-  const mergeBase = await getMergeBase(octokit, owner, repo, baseBranch, headBranch);
+): Promise<
+  {
+    filename: string;
+    baseVersionContent: string;
+    mainBranchContent: string;
+    prBranchContent: string;
+  }[]
+> {
+  const mergeBase = await getMergeBase(
+    octokit,
+    owner,
+    repo,
+    baseBranch,
+    headBranch
+  );
 
   const changedFiles = await octokit.rest.pulls.listFiles({
     owner,
@@ -136,23 +167,45 @@ export async function analyzePullRequest2(
   for (const file of changedFiles.data) {
     const { filename, status } = file;
 
-    const baseVersionContent = await fetchFileContent(octokit, owner, repo, filename, mergeBase);
-    const mainBranchContent = await fetchFileContent(octokit, owner, repo, filename, baseBranch);
-    const prBranchContent = await fetchFileContent(octokit, owner, repo, filename, headBranch);
+    const baseVersionContent = await fetchFileContent(
+      octokit,
+      owner,
+      repo,
+      filename,
+      mergeBase
+    );
+    const mainBranchContent = await fetchFileContent(
+      octokit,
+      owner,
+      repo,
+      filename,
+      baseBranch
+    );
+    const prBranchContent = await fetchFileContent(
+      octokit,
+      owner,
+      repo,
+      filename,
+      headBranch
+    );
 
     // Log the three types of code versions for debugging purposes
-    console.log(`Logging code versions for file: ${filename}`);
-    console.log("Base Version Content:\n", baseVersionContent);
-    console.log("Main Branch Content:\n", mainBranchContent);
-    console.log("PR Branch Content:\n", prBranchContent);
+    // console.log(`Logging code versions for file: ${filename}`);
+    // console.log('Base Version Content:\n', baseVersionContent);
+    // console.log('Main Branch Content:\n', mainBranchContent);
+    // console.log('PR Branch Content:\n', prBranchContent);
 
-    if (status === "added" || status === "removed") {
-      console.log(`Skipping ${filename} (${status}) - Not modified in both branches.`);
+    if (status === 'added' || status === 'removed') {
+      console.log(
+        `Skipping ${filename} (${status}) - Not modified in both branches.`
+      );
       continue;
     }
 
     if (!baseVersionContent || !prBranchContent || !mainBranchContent) {
-      console.log(`Skipping ${filename} - File missing in one of the branches.`);
+      console.log(
+        `Skipping ${filename} - File missing in one of the branches.`
+      );
       continue;
     }
 
@@ -167,8 +220,13 @@ export async function analyzePullRequest2(
   return analysisDetails;
 }
 
-
-async function getMergeBase(octokit: any, owner: string, repo: string, mainBranch: string, featureBranch: string): Promise<string> {
+async function getMergeBase(
+  octokit: any,
+  owner: string,
+  repo: string,
+  mainBranch: string,
+  featureBranch: string
+): Promise<string> {
   try {
     const response = await octokit.rest.repos.compareCommits({
       owner,
@@ -179,7 +237,10 @@ async function getMergeBase(octokit: any, owner: string, repo: string, mainBranc
 
     return response.data.merge_base_commit.sha;
   } catch (error) {
-    console.error(`Error fetching merge base for ${mainBranch} and ${featureBranch}:`, error);
+    console.error(
+      `Error fetching merge base for ${mainBranch} and ${featureBranch}:`,
+      'AAA'
+    );
     throw error;
   }
 }
@@ -194,17 +255,17 @@ export async function analyzeConflicts(
   }[]
 ): Promise<string> {
   if (files.length === 0) {
-    console.log("No modified files found for conflict analysis.");
-    return "### Semantic Conflict Analysis\n\nNo modified files found for conflict analysis.";
+    console.log('No modified files found for conflict analysis.');
+    return '### Semantic Conflict Analysis\n\nNo modified files found for conflict analysis.';
   }
- const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) {
-  throw new Error("GEMINI_API_KEY is not defined in environment variables.");
-}
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY is not defined in environment variables.');
+  }
 
-const genAI = new GoogleGenerativeAI(apiKey);
+  const genAI = new GoogleGenerativeAI(apiKey);
 
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
   const results = [];
   let conflictDetected = false;
@@ -236,7 +297,7 @@ Strictly adhere to all guidelines.
 
     try {
       const result = await model.generateContent({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
       });
 
       const raw = result.response.text();
@@ -245,38 +306,44 @@ Strictly adhere to all guidelines.
       try {
         responseData = JSON.parse(raw);
       } catch (jsonError) {
-        console.error(`JSON parsing error for file ${file.filename}:`, jsonError);
-        console.error("Raw AI response (before parsing error):", raw);
+        console.error(
+          `JSON parsing error for file ${file.filename}:`,
+          jsonError
+        );
+        console.error('Raw AI response (before parsing error):', raw);
         results.push({
           filename: file.filename,
           conflict: false,
-          explanation: "Error: AI response was not valid JSON."
+          explanation: 'Error: AI response was not valid JSON.',
         });
         continue;
       }
 
-      if (responseData.conflict === "yes") {
+      if (responseData.conflict === 'yes') {
         conflictDetected = true;
         results.push({
           filename: file.filename,
           conflict: true,
-          explanation: responseData.explanation
+          explanation: responseData.explanation,
         });
       } else {
         results.push({
           filename: file.filename,
           conflict: false,
-          explanation: "No conflicts detected in this file."
+          explanation: 'No conflicts detected in this file.',
         });
       }
-
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`Error analyzing conflicts for file ${file.filename}:`, error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      console.error(
+        `Error analyzing conflicts for file ${file.filename}:`,
+        error
+      );
       results.push({
         filename: file.filename,
         conflict: false,
-        explanation: `Error: Failed to analyze file (${errorMessage})`
+        explanation: `Error: Failed to analyze file (${errorMessage})`,
       });
     }
 
@@ -300,16 +367,19 @@ Strictly adhere to all guidelines.
 
   if (conflictDetected) {
     const conflictFiles = results
-      .filter(result => result.conflict)
-      .map(result => `\n## File: \`${result.filename}\`\n${result.explanation}`)
+      .filter((result) => result.conflict)
+      .map(
+        (result) => `\n## File: \`${result.filename}\`\n${result.explanation}`
+      )
       .join('\n\n');
 
-    return `### Semantic Conflict Analysis\n**Conflicts Detected in ${results.filter(r => r.conflict).length}/${files.length} files:**${conflictFiles}`;
+    return `### Semantic Conflict Analysis\n**Conflicts Detected in ${
+      results.filter((r) => r.conflict).length
+    }/${files.length} files:**${conflictFiles}`;
   } else {
-    return "### Semantic Conflict Analysis\n\nNo semantic conflicts detected across all modified files.";
+    return '### Semantic Conflict Analysis\n\nNo semantic conflicts detected across all modified files.';
   }
 }
-
 
 // Functions for handling conflict feedback and validation---------------------------------------------------------------------------------------------------
 export async function postAIValidationForm(
@@ -342,7 +412,7 @@ Our AI has analyzed this pull request and found potential **semantic conflicts**
     owner,
     repo,
     true, // conflicts detected
-    true  // validation form posted
+    true // validation form posted
   );
 }
 
@@ -373,7 +443,7 @@ export async function handleConflictAnalysis(
   prNumber: number,
   conflictAnalysis: string
 ) {
-  if (conflictAnalysis.includes("Conflicts Detected")) {
+  if (conflictAnalysis.includes('Conflicts Detected')) {
     await octokit.rest.issues.createComment({
       owner: owner,
       repo: repo,
@@ -389,7 +459,85 @@ export async function handleConflictAnalysis(
       owner,
       repo,
       false, // no conflicts detected
-      false  // no validation form posted
+      false // no validation form posted
     );
+  }
+}
+
+export async function checkSemanticConflictCommands(
+  octokit: any,
+  payload: any
+) {
+  const commentBody = payload.comment.body.trim();
+
+  if (
+    commentBody.startsWith('#Confirm') ||
+    commentBody.startsWith('#NotAConflict')
+  ) {
+    try {
+      const { issue, comment } = payload;
+      const prNumber = issue.number;
+      const owner = payload.repository.owner.login;
+      const repo = payload.repository.name;
+
+      const wasAnalyzedWithValidationForm =
+        await PrConflictAnalysisService.wasAnalyzedWithValidationForm(
+          prNumber,
+          owner,
+          repo
+        );
+
+      if (!wasAnalyzedWithValidationForm) {
+        logger.info(
+          `Ignoring comment for PR #${prNumber} as it wasn't analyzed for conflicts or didn't have a validation form posted`
+        );
+        return;
+      }
+
+      let responseMessage = '';
+      let conflictConfirmed = false;
+      let explanation = null;
+
+      if (commentBody.startsWith('#Confirm')) {
+        responseMessage = `🚨 **AI Conflict Validation Feedback** 🚨\n\nThe reviewer has confirmed that **this is a conflict**. The \`semantic-conflict\` label has been applied.`;
+        conflictConfirmed = true;
+        logger.info(`Confirmed conflict for PR #${prNumber}`);
+
+        await octokit.rest.issues.addLabels({
+          owner: owner,
+          repo: repo,
+          issue_number: prNumber,
+          labels: ['semantic-conflict'],
+        });
+      } else {
+        explanation = commentBody.replace('#NotAConflict', '').trim();
+        responseMessage = `📝 **AI Conflict Validation Feedback** 📝\n\nThe reviewer has determined that **this is not a conflict**.\n🛠 **Reason:** ${
+          explanation ? explanation : '_No reason provided_'
+        }`;
+        logger.info(
+          `Not a conflict for PR #${prNumber}: ${
+            explanation || 'No reason provided'
+          }`
+        );
+      }
+
+      await octokit.rest.issues.createComment({
+        owner: owner,
+        repo: repo,
+        issue_number: prNumber,
+        body: responseMessage,
+      });
+
+      await logConflictFeedback(prNumber, conflictConfirmed, explanation);
+    } catch (error) {
+      const customError = error as CustomError;
+      if (customError.response) {
+        logger.error(
+          `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
+        );
+      } else {
+        logger.error(customError.message || 'An unknown error occurred');
+      }
+    }
   }
 }

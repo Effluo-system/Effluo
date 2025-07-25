@@ -1,8 +1,8 @@
-import { Octokit } from '@octokit/rest';
 import { execSync } from 'child_process';
 import diff3 from 'diff3';
 import * as fs from 'fs';
 import { Base64 } from 'js-base64';
+import { Octokit } from 'octokit';
 import * as path from 'path';
 import { logger } from './logger.ts';
 

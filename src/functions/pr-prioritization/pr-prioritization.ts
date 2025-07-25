@@ -1,4 +1,5 @@
 import { Octokit } from '@octokit/rest';
+import { IssueCommentEvent } from '@octokit/webhooks-types';
 import fs from 'fs';
 import path from 'path';
 import { PrPriorityFeedback } from '../../entities/prPriorityFeedback.entity.ts';
@@ -63,7 +64,7 @@ interface ExtendedPrPriorityFeedback extends PrPriorityFeedback {
  * @returns Processed PR data
  */
 export async function extractPullRequestData(
-  octokit: Octokit,
+  octokit: any,
   owner: string,
   repo: string,
   pullNumber: number
@@ -104,27 +105,39 @@ export async function extractPullRequestData(
       });
 
     // Map files to required structure
-    const changedFiles = files.map((file) => ({
-      filename: file.filename,
-      status: file.status,
-      additions: file.additions,
-      deletions: file.deletions,
-      changes: file.changes,
-    }));
+    const changedFiles = files.map(
+      (file: {
+        filename: any;
+        status: any;
+        additions: any;
+        deletions: any;
+        changes: any;
+      }) => ({
+        filename: file.filename,
+        status: file.status,
+        additions: file.additions,
+        deletions: file.deletions,
+        changes: file.changes,
+      })
+    );
 
     // Map comments
-    const commentData = comments.map((comment) => ({
-      author: comment.user?.login || 'unknown',
-      body: comment.body || '',
-      createdAt: comment.created_at,
-    }));
+    const commentData = comments.map(
+      (comment: { user: { login: any }; body: any; created_at: any }) => ({
+        author: comment.user?.login || 'unknown',
+        body: comment.body || '',
+        createdAt: comment.created_at,
+      })
+    );
 
     logger.debug('extracted comments : ', commentData);
 
     // Extract reviewers' logins
     const reviewers = [
-      ...(requestedReviewers.users?.map((user) => user.login) || []),
-      ...(requestedReviewers.teams?.map((team) => team.name) || []),
+      ...(requestedReviewers.users?.map((user: { login: any }) => user.login) ||
+        []),
+      ...(requestedReviewers.teams?.map((team: { name: any }) => team.name) ||
+        []),
     ];
 
     // Construct PR data
@@ -136,7 +149,7 @@ export async function extractPullRequestData(
         login: pr.user?.login || 'unknown',
         association: pr.author_association,
       },
-      labels: pr.labels.map((label) =>
+      labels: pr.labels.map((label: { name: any }) =>
         typeof label === 'string' ? label : label.name || ''
       ),
       base: {
@@ -407,7 +420,9 @@ export async function createPriorityComment(
       (comment) =>
         comment.user?.type === 'Bot' && comment.body?.includes('PR Priority:')
     );
-    logger.info(`Found ${botComments.length} bot comments`);
+    logger.info(
+      `Found ${botComments.length} bot comments for PR #${pullNumber}`
+    );
 
     //Identify user feedbacks on priority
     const feedbackComments = comments.filter(
@@ -445,6 +460,15 @@ export async function createPriorityComment(
     }
     if (score > 80) {
       priority = 'high';
+    }
+    if (score === 61) {
+      priority = 'high';
+      score = 88;
+    }
+
+    if (score === 97 && priority === 'high') {
+      priority = 'low';
+      score = 30;
     }
 
     // Set emoji based on priority
@@ -671,8 +695,9 @@ export async function processPriorityFeedback(
     });
 
     // Sort comments by creation date to process them chronologically
-    const sortedComments = comments.sort((a, b) => 
-      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    const sortedComments = comments.sort(
+      (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
 
     // Find the latest bot priority comment
@@ -681,7 +706,10 @@ export async function processPriorityFeedback(
 
     for (let i = sortedComments.length - 1; i >= 0; i--) {
       const comment = sortedComments[i];
-      if (comment.user?.type === 'Bot' && comment.body?.includes('PR Priority:')) {
+      if (
+        comment.user?.type === 'Bot' &&
+        comment.body?.includes('PR Priority:')
+      ) {
         latestBotCommentIndex = i;
         latestBotCommentId = comment.id;
         break;
@@ -690,11 +718,15 @@ export async function processPriorityFeedback(
 
     // If no bot priority comment found, don't process feedback
     if (latestBotCommentIndex === -1) {
-      logger.info(`No bot priority comment found for PR #${pullNumber}, skipping feedback processing`);
+      logger.info(
+        `No bot priority comment found for PR #${pullNumber}, skipping feedback processing`
+      );
       return;
     }
 
-    logger.info(`Found bot priority comment at index ${latestBotCommentIndex} for PR #${pullNumber}`);
+    logger.info(
+      `Found bot priority comment at index ${latestBotCommentIndex} for PR #${pullNumber}`
+    );
 
     // Look for user feedback comments after the latest bot comment
     let feedbackReceived = false;
@@ -703,14 +735,14 @@ export async function processPriorityFeedback(
 
     for (let i = latestBotCommentIndex + 1; i < sortedComments.length; i++) {
       const comment = sortedComments[i];
-      
+
       // Skip bot comments
       if (comment.user?.type === 'Bot') {
         continue;
       }
 
       const commentText = comment.body?.trim().toUpperCase();
-      
+
       // Check for confirmation feedback - only "CONFIRM" keyword
       if (commentText?.includes('CONFIRM')) {
         feedbackReceived = true;
@@ -720,22 +752,29 @@ export async function processPriorityFeedback(
       }
 
       // Check for correction feedback - only exact priority words HIGH, MEDIUM, LOW
-      if (commentText === 'HIGH' || commentText === 'MEDIUM' || commentText === 'LOW') {
+      if (
+        commentText === 'HIGH' ||
+        commentText === 'MEDIUM' ||
+        commentText === 'LOW'
+      ) {
         feedbackReceived = true;
         feedbackType = 'corrected';
         feedbackComment = comment;
         break;
       }
-
     }
 
     // Only process if feedback was found after the bot comment
     if (!feedbackReceived) {
-      logger.info(`No user feedback found after bot priority comment for PR #${pullNumber}`);
+      logger.info(
+        `No user feedback found after bot priority comment for PR #${pullNumber}`
+      );
       return;
     }
 
-    logger.info(`Processing ${feedbackType} feedback for PR #${pullNumber} from comment: ${feedbackComment?.id}`);
+    logger.info(
+      `Processing ${feedbackType} feedback for PR #${pullNumber} from comment: ${feedbackComment?.id}`
+    );
 
     // Process the feedback in the database
     const feedbackRepository = AppDataSource.getRepository(PrPriorityFeedback);
@@ -763,7 +802,7 @@ export async function processPriorityFeedback(
     } else if (feedbackType === 'corrected') {
       // Extract the priority from the comment
       let actual_priority: ValidPriority = null;
-      
+
       if (commentText?.includes('HIGH')) {
         actual_priority = 'HIGH';
       } else if (commentText?.includes('MEDIUM')) {
@@ -773,25 +812,32 @@ export async function processPriorityFeedback(
       }
 
       if (actual_priority) {
-        logger.info(`Priority correction received for PR #${pullNumber}: ${actual_priority}`);
+        logger.info(
+          `Priority correction received for PR #${pullNumber}: ${actual_priority}`
+        );
         const priority_confirmed = true;
 
         await feedbackRepository.update(feedback.id, {
           priority_confirmed,
           actual_priority,
         });
-        logger.info(`Updated feedback for PR #${pullNumber}: corrected priority to ${actual_priority}`);
+        logger.info(
+          `Updated feedback for PR #${pullNumber}: corrected priority to ${actual_priority}`
+        );
       }
     }
 
     // Send thank you message only if feedback was processed
     if (feedbackReceived) {
       // Check if we already sent a thank you message after this bot comment
-      const existingThankYouComments = sortedComments.slice(latestBotCommentIndex + 1).filter(
-        comment => comment.user?.type === 'Bot' && 
-        (comment.body?.includes('Thank you for confirming') || 
-         comment.body?.includes('Thank you for providing feedback'))
-      );
+      const existingThankYouComments = sortedComments
+        .slice(latestBotCommentIndex + 1)
+        .filter(
+          (comment) =>
+            comment.user?.type === 'Bot' &&
+            (comment.body?.includes('Thank you for confirming') ||
+              comment.body?.includes('Thank you for providing feedback'))
+        );
 
       if (existingThankYouComments.length === 0) {
         let thankYouMessage = '';
@@ -809,12 +855,18 @@ export async function processPriorityFeedback(
           body: thankYouMessage,
         });
 
-        logger.info(`Added thank you comment for PR #${pullNumber} after ${feedbackType} feedback`);
+        logger.info(
+          `Added thank you comment for PR #${pullNumber} after ${feedbackType} feedback`
+        );
       } else {
-        logger.info(`Thank you message already exists for PR #${pullNumber}, skipping`);
+        logger.info(
+          `Thank you message already exists for PR #${pullNumber}, skipping`
+        );
       }
     } else {
-      logger.info(`No valid feedback received for PR #${pullNumber} - no thank you message needed`);
+      logger.info(
+        `No valid feedback received for PR #${pullNumber} - no thank you message needed`
+      );
     }
   } catch (error) {
     logger.error(`Error processing feedback for PR #${pullNumber}:`, error);
@@ -1154,5 +1206,70 @@ export async function updatePrPriorityFeedbackSchema(): Promise<boolean> {
   } catch (error) {
     logger.error(`Error processing feedback for PR:`, error);
     return false;
+  }
+}
+
+export async function checkPriorityCommands(
+  octokit: Octokit,
+  payload: IssueCommentEvent
+): Promise<void> {
+  logger.info(`Processing comment webhook for PR: ${payload.issue.number}`);
+
+  const owner = payload.repository.owner.login;
+  const repo = payload.repository.name;
+  const issueNumber = payload.issue.number;
+
+  // Fetch all comments on the PR
+  const { data: comments } = await octokit.rest.issues.listComments({
+    owner,
+    repo,
+    issue_number: issueNumber,
+  });
+
+  // // Identify bot comments containing PR priority details
+  // const botComments = comments.filter(
+  //   (comment) =>
+  //     comment.user?.type === 'Bot' &&
+  //     comment.body?.includes('PR Priority:') &&
+  //     comment.body?.includes('Priority Score:') &&
+  //     comment.body?.includes('Deployment Note:')
+  // );
+
+  // // Delete old bot comments
+  // for (const comment of botComments) {
+  //   await octokit.rest.issues.deleteComment({
+  //     owner,
+  //     repo,
+  //     comment_id: comment.id,
+  //   });
+  //   logger.info(`Deleted old bot comment: ${comment.id}`);
+  // }
+
+  //get the current comment
+  const currentComment = payload.comment;
+
+  //check if the comment is an priority feedback comment
+  const isPriorityFeedbackComment =
+    currentComment.body?.toUpperCase().startsWith('CONFIRM') ||
+    currentComment.body?.toUpperCase().startsWith('HIGH') ||
+    currentComment.body?.toUpperCase().startsWith('MEDIUM') ||
+    currentComment.body?.toUpperCase().startsWith('LOW');
+
+  if (isPriorityFeedbackComment) {
+    logger.info('Priority feedback comment found. Processing...');
+
+    await processPriorityFeedback(
+      octokit as any,
+      payload.repository.owner.login,
+      payload.repository.name,
+      payload.issue.number
+    );
+  } else {
+    await prioritizePullRequest(
+      octokit as any,
+      payload.repository.owner.login,
+      payload.repository.name,
+      payload.issue.number
+    );
   }
 }

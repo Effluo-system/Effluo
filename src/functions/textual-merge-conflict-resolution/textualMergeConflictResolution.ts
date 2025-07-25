@@ -1,6 +1,7 @@
-import { Octokit } from '@octokit/rest';
+import { IssueCommentEvent } from '@octokit/webhooks-types';
 import diff3 from 'diff3';
 import { Base64 } from 'js-base64';
+import { Octokit } from 'octokit';
 import { MergeConflictService } from '../../services/mergeConflict.service.ts';
 import { PullRequestService } from '../../services/pullRequest.service.ts';
 import { RepoService } from '../../services/repo.service.ts';
@@ -1171,5 +1172,66 @@ export async function resolveAllConflicts(
     });
 
     return false;
+  }
+}
+
+export async function checkTextualConflictCommands(
+  octokit: Octokit,
+  payload: IssueCommentEvent
+): Promise<void> {
+  const { applyAll, commentId, user, commandTimestamp } =
+    await checkForCommitResolutionCommands(
+      octokit as any,
+      payload.repository.id.toString(),
+      payload.repository.owner.login,
+      payload.repository.name,
+      payload.issue.number
+    );
+
+  // Process "apply all" command if found
+  if (applyAll && commentId && commandTimestamp) {
+    logger.info(
+      `Processing apply all command from ${user} at ${commandTimestamp}`
+    );
+
+    // React to the comment to indicate we're processing it
+    await octokit.rest.reactions.createForIssueComment({
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name,
+      comment_id: commentId,
+      content: 'eyes',
+    });
+
+    const success = await resolveAllConflicts(
+      octokit as any,
+      payload.repository.id.toString(),
+      payload.repository.owner.login,
+      payload.repository.name,
+      payload.issue.number
+    );
+
+    // Add success/failure reaction
+    await octokit.rest.reactions.createForIssueComment({
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name,
+      comment_id: commentId,
+      content: success ? '+1' : '-1',
+    });
+
+    // If the command was successful, update the timestamp in the database
+    if (success) {
+      const repoEntity = await RepoService.getRepoByOwnerAndName(
+        payload.repository.owner.login,
+        payload.repository.name
+      );
+
+      if (repoEntity) {
+        await MergeConflictService.updateLastProcessedTimestamp(
+          repoEntity.id,
+          payload.issue.number,
+          commandTimestamp
+        );
+      }
+    }
   }
 }

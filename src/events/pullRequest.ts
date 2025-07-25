@@ -5,7 +5,6 @@ import {
   analyzePullRequest,
   analyzePullRequest2,
   handleConflictAnalysis,
-  logConflictFeedback,
 } from '../functions/semantic-conflict-detection/semanticConflictDetection.ts';
 import { calculateReviewDifficultyOfPR } from '../functions/workload-calculation/workloadCalculation.ts';
 import { PrConflictAnalysisService } from '../services/prConflictAnalysis.service.ts';
@@ -60,88 +59,6 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
       );
     } else {
       logger.error(customError.message || 'An unknown error occurred');
-    }
-  }
-});
-
-app.webhooks.on('issue_comment.created', async ({ octokit, payload }) => {
-  if (
-    payload.comment.user.login.includes('bot') ||
-    payload.comment.user.type === 'Bot'
-  ) {
-    return;
-  }
-
-  const commentBody = payload.comment.body.trim();
-
-  if (
-    commentBody.startsWith('#Confirm') ||
-    commentBody.startsWith('#NotAConflict')
-  ) {
-    try {
-      const { issue, comment } = payload;
-      const prNumber = issue.number;
-      const owner = payload.repository.owner.login;
-      const repo = payload.repository.name;
-
-      const wasAnalyzedWithValidationForm =
-        await PrConflictAnalysisService.wasAnalyzedWithValidationForm(
-          prNumber,
-          owner,
-          repo
-        );
-
-      if (!wasAnalyzedWithValidationForm) {
-        logger.info(
-          `Ignoring comment for PR #${prNumber} as it wasn't analyzed for conflicts or didn't have a validation form posted`
-        );
-        return;
-      }
-
-      let responseMessage = '';
-      let conflictConfirmed = false;
-      let explanation = null;
-
-      if (commentBody.startsWith('#Confirm')) {
-        responseMessage = `🚨 **AI Conflict Validation Feedback** 🚨\n\nThe reviewer has confirmed that **this is a conflict**. The \`semantic-conflict\` label has been applied.`;
-        conflictConfirmed = true;
-        logger.info(`Confirmed conflict for PR #${prNumber}`);
-
-        await octokit.rest.issues.addLabels({
-          owner: owner,
-          repo: repo,
-          issue_number: prNumber,
-          labels: ['semantic-conflict'],
-        });
-      } else {
-        explanation = commentBody.replace('#NotAConflict', '').trim();
-        responseMessage = `📝 **AI Conflict Validation Feedback** 📝\n\nThe reviewer has determined that **this is not a conflict**.\n🛠 **Reason:** ${
-          explanation ? explanation : '_No reason provided_'
-        }`;
-        logger.info(
-          `Not a conflict for PR #${prNumber}: ${
-            explanation || 'No reason provided'
-          }`
-        );
-      }
-
-      await octokit.rest.issues.createComment({
-        owner: owner,
-        repo: repo,
-        issue_number: prNumber,
-        body: responseMessage,
-      });
-
-      await logConflictFeedback(prNumber, conflictConfirmed, explanation);
-    } catch (error) {
-      const customError = error as CustomError;
-      if (customError.response) {
-        logger.error(
-          `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
-        );
-      } else {
-        logger.error(customError.message || 'An unknown error occurred');
-      }
     }
   }
 });

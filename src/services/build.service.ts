@@ -7,7 +7,14 @@ export interface BuildData {
   owner: string;
   workflowName: string;
   status: 'completed' | 'requested' | 'in_progress';
-  conclusion: 'success' | 'failure' | 'neutral' | 'cancelled' | 'skipped' | 'timed_out' | 'action_required';
+  conclusion:
+    | 'success'
+    | 'failure'
+    | 'neutral'
+    | 'cancelled'
+    | 'skipped'
+    | 'timed_out'
+    | 'action_required';
   runNumber: number;
   createdAt: Date;
   updatedAt: Date;
@@ -22,7 +29,7 @@ export interface BuildData {
 export class BuildService {
   /**
    * Get builds by authentication token
-   * 
+   *
    * @param token GitHub authentication token
    * @returns Array of build data for repositories accessible with the token
    */
@@ -31,27 +38,27 @@ export class BuildService {
       logger.info('Getting builds by token');
       // Create Octokit instance directly with token
       const octokit = new Octokit({
-        auth: token
+        auth: token,
       });
-      
+
       // Get user repositories
       const { data: repos } = await octokit.repos.listForAuthenticatedUser({
         sort: 'updated',
         direction: 'desc',
-        per_page: 100
+        per_page: 100,
       });
-      
+
       const allBuilds: BuildData[] = [];
-      
+
       // For each repo, get workflow runs
       for (const repo of repos) {
         try {
           const { data: runs } = await octokit.actions.listWorkflowRunsForRepo({
             owner: repo.owner.login,
             repo: repo.name,
-            per_page: 10 // Limit to recent builds
+            per_page: 10, // Limit to recent builds
           });
-          
+
           // Process each workflow run
           for (const run of runs.workflow_runs) {
             const buildData = await BuildService.extractBuildData(
@@ -60,17 +67,20 @@ export class BuildService {
               repo.name,
               run.id
             );
-            
+
             if (buildData) {
               allBuilds.push(buildData);
             }
           }
         } catch (error) {
-          logger.warn(`Failed to get workflow runs for ${repo.full_name}:`, error);
+          logger.warn(
+            `Failed to get workflow runs for ${repo.full_name}:`,
+            error
+          );
           // Continue to next repo
         }
       }
-      
+
       return allBuilds;
     } catch (error) {
       logger.error('Failed to get builds by token:', error);
@@ -80,9 +90,9 @@ export class BuildService {
       throw error;
     }
   }
- /**
+  /**
    * Extract associated pull requests for a workflow run
-   * 
+   *
    * @param octokit Octokit instance
    * @param owner Repository owner
    * @param repo Repository name
@@ -90,9 +100,9 @@ export class BuildService {
    * @returns Array of associated PR data
    */
   private static async getAssociatedPRs(
-    octokit: Octokit, 
-    owner: string, 
-    repo: string, 
+    octokit: Octokit,
+    owner: string,
+    repo: string,
     runId: number
   ) {
     try {
@@ -100,30 +110,32 @@ export class BuildService {
       const { data: run } = await octokit.rest.actions.getWorkflowRun({
         owner,
         repo,
-        run_id: runId
+        run_id: runId,
       });
-      
-      const associatedPRs: {number: number; title: string; url: string}[] = [];
-      
+
+      const associatedPRs: { number: number; title: string; url: string }[] =
+        [];
+
       // Method 1: Check if the run was triggered by a PR event
       if (run.event === 'pull_request') {
         logger.info(`Run #${runId} was triggered by a pull_request event`);
-        
+
         // For pull_request events, the head SHA can help us identify the PR
         if (run.head_sha) {
           // Try to find the PR number from the head SHA
           try {
             // Search for PRs with this head SHA
-            const { data: searchResults } = await octokit.rest.search.issuesAndPullRequests({
-              q: `repo:${owner}/${repo} is:pr ${run.head_sha}`
-            });
-            
+            const { data: searchResults } =
+              await octokit.rest.search.issuesAndPullRequests({
+                q: `repo:${owner}/${repo} is:pr ${run.head_sha}`,
+              });
+
             for (const item of searchResults.items) {
               if (item.pull_request) {
                 associatedPRs.push({
                   number: item.number,
                   title: item.title,
-                  url: item.html_url
+                  url: item.html_url,
                 });
               }
             }
@@ -132,7 +144,7 @@ export class BuildService {
           }
         }
       }
-      
+
       // Method 2: If Method 1 didn't find anything, check by matching head repo and SHA
       if (associatedPRs.length === 0 && run.head_repository && run.head_sha) {
         // Get open PRs in the repository
@@ -141,23 +153,24 @@ export class BuildService {
           repo,
           state: 'open',
           sort: 'updated',
-          direction: 'desc'
+          direction: 'desc',
         });
-        
+
         // Find PRs that match the head repository and SHA
-        const matchingPRs = pullRequests.filter(pr => 
-          pr.head.repo?.full_name === run.head_repository?.full_name && 
-          pr.head.sha === run.head_sha
+        const matchingPRs = pullRequests.filter(
+          (pr) =>
+            pr.head.repo?.full_name === run.head_repository?.full_name &&
+            pr.head.sha === run.head_sha
         );
-        
+
         for (const pr of matchingPRs) {
           associatedPRs.push({
             number: pr.number,
             title: pr.title,
-            url: pr.html_url
+            url: pr.html_url,
           });
         }
-        
+
         // If we didn't find any, try looking for closed PRs that might have been merged
         if (associatedPRs.length === 0) {
           const { data: closedPRs } = await octokit.rest.pulls.list({
@@ -166,35 +179,41 @@ export class BuildService {
             state: 'closed',
             sort: 'updated',
             direction: 'desc',
-            per_page: 20 // Limit to recent PRs
+            per_page: 20, // Limit to recent PRs
           });
-          
+
           // Check if any closed PRs match our criteria
-          const closedMatchingPRs = closedPRs.filter(pr => 
-            pr.head.repo?.full_name === run.head_repository?.full_name && 
-            pr.head.sha === run.head_sha
+          const closedMatchingPRs = closedPRs.filter(
+            (pr) =>
+              pr.head.repo?.full_name === run.head_repository?.full_name &&
+              pr.head.sha === run.head_sha
           );
-          
+
           for (const pr of closedMatchingPRs) {
             associatedPRs.push({
               number: pr.number,
               title: pr.title,
-              url: pr.html_url
+              url: pr.html_url,
             });
           }
         }
       }
-      
+
       // Method 3: Check if the workflow was triggered by a check_suite event on a PR
-      if (associatedPRs.length === 0 && run.event === 'check_suite' && run.head_sha) {
+      if (
+        associatedPRs.length === 0 &&
+        run.event === 'check_suite' &&
+        run.head_sha
+      ) {
         try {
           // Get check suites for this SHA
-          const { data: checkSuites } = await octokit.rest.checks.listSuitesForRef({
-            owner,
-            repo,
-            ref: run.head_sha
-          });
-          
+          const { data: checkSuites } =
+            await octokit.rest.checks.listSuitesForRef({
+              owner,
+              repo,
+              ref: run.head_sha,
+            });
+
           // Find check suites that match this run
           for (const suite of checkSuites.check_suites) {
             // If there's a PR associated with this check suite
@@ -205,13 +224,13 @@ export class BuildService {
                   const { data: pr } = await octokit.rest.pulls.get({
                     owner,
                     repo,
-                    pull_number: prRef.number
+                    pull_number: prRef.number,
                   });
-                  
+
                   associatedPRs.push({
                     number: pr.number,
                     title: pr.title,
-                    url: pr.html_url
+                    url: pr.html_url,
                   });
                 } catch (prError) {
                   logger.warn(`Failed to get PR #${prRef.number}:`, prError);
@@ -223,7 +242,7 @@ export class BuildService {
           logger.warn(`Failed to get check suites:`, checkError);
         }
       }
-      
+
       // Method 4: Look for PR references in commit messages (if all else fails)
       if (associatedPRs.length === 0 && run.head_sha) {
         try {
@@ -231,13 +250,15 @@ export class BuildService {
           const { data: commit } = await octokit.rest.repos.getCommit({
             owner,
             repo,
-            ref: run.head_sha
+            ref: run.head_sha,
           });
-          
+
           // Look for PR references in commit message like "Merge pull request #123"
           const commitMessage = commit.commit.message;
-          const prRefs = commitMessage.match(/PR #(\d+)|pull request #(\d+)|#(\d+)/gi);
-          
+          const prRefs = commitMessage.match(
+            /PR #(\d+)|pull request #(\d+)|#(\d+)/gi
+          );
+
           if (prRefs) {
             // Extract PR numbers
             const prNumbers = new Set<number>();
@@ -247,25 +268,25 @@ export class BuildService {
                 prNumbers.add(parseInt(match[1], 10));
               }
             }
-            
+
             // Get details for each PR found
             for (const prNumber of prNumbers) {
               try {
                 const { data: pr } = await octokit.rest.pulls.get({
                   owner,
                   repo,
-                  pull_number: prNumber
+                  pull_number: prNumber,
                 });
-                
+
                 associatedPRs.push({
                   number: pr.number,
                   title: pr.title,
-                  url: pr.html_url
+                  url: pr.html_url,
                 });
               } catch (prError) {
                 // If we get a 404, this might not be a valid PR number
                 // if (prError.status !== 404) {
-                  logger.warn(`Failed to get PR #${prNumber}:`);
+                logger.warn(`Failed to get PR #${prNumber}:`);
                 // }
               }
             }
@@ -274,7 +295,7 @@ export class BuildService {
           logger.warn(`Failed to analyze commit message:`, commitError);
         }
       }
-      
+
       // De-duplicate PRs by number
       const uniquePRs = Array.from(
         associatedPRs.reduce((map, pr) => {
@@ -282,17 +303,15 @@ export class BuildService {
             map.set(pr.number, pr);
           }
           return map;
-        }, new Map<number, {number: number; title: string; url: string}>())
+        }, new Map<number, { number: number; title: string; url: string }>())
       ).map(([_, pr]) => pr);
-      
+
       return uniquePRs;
     } catch (error) {
       logger.error(`Failed to get PRs for run #${runId}:`, error);
       return [];
     }
   }
-  
-  
 
   /**
    * Extract comprehensive build data from GitHub Actions
@@ -310,12 +329,14 @@ export class BuildService {
     runId: number
   ): Promise<BuildData | undefined> {
     try {
-      logger.info(`Extracting build data for run #${runId} in ${owner}/${repo}`);
+      logger.info(
+        `Extracting build data for run #${runId} in ${owner}/${repo}`
+      );
       // Fetch workflow run details
       const { data: run } = await octokit.rest.actions.getWorkflowRun({
         owner,
         repo,
-        run_id: runId
+        run_id: runId,
       });
 
       // Get associated pull requests
@@ -327,8 +348,10 @@ export class BuildService {
       );
 
       if (associatedPRs.length > 0) {
-        logger.info(`Found ${associatedPRs.length} associated PR(s) for run #${runId}`);
-      }else {
+        logger.info(
+          `Found ${associatedPRs.length} associated PR(s) for run #${runId}`
+        );
+      } else {
         logger.info(`No associated PRs found for run #${runId}`);
       }
 
@@ -343,7 +366,7 @@ export class BuildService {
         createdAt: new Date(run.created_at),
         updatedAt: new Date(run.updated_at),
         url: run.html_url,
-        associatedPRs: associatedPRs.length > 0 ? associatedPRs : undefined
+        associatedPRs: associatedPRs.length > 0 ? associatedPRs : undefined,
       };
     } catch (error) {
       logger.error(`Failed to extract build data for run #${runId}:`, error);
@@ -358,6 +381,8 @@ export class BuildService {
    * @returns Boolean indicating if build failed
    */
   public static hasBuildFailed(buildData: BuildData): boolean {
-    return buildData.conclusion === 'failure' || buildData.status === 'requested';
+    return (
+      buildData.conclusion === 'failure' || buildData.status === 'requested'
+    );
   }
 }
