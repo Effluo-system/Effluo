@@ -392,6 +392,154 @@ export async function sendPRDataForProcessing(
  * Create a comment on a PR with its priority assessment
  * and request user feedback for correction.
  */
+// export async function createPriorityComment(
+//   octokit: Octokit,
+//   owner: string,
+//   repo: string,
+//   pullNumber: number,
+//   priority: string,
+//   score: number
+// ) {
+//   try {
+//     // First check if the PR is open
+//     const { data: pr } = await octokit.rest.pulls.get({
+//       owner,
+//       repo,
+//       pull_number: pullNumber,
+//     });
+
+//     // Fetch all comments on the PR
+//     const { data: comments } = await octokit.rest.issues.listComments({
+//       owner,
+//       repo,
+//       issue_number: pullNumber,
+//     });
+
+//     // Identify bot comments containing PR priority details
+//     const botComments = comments.filter(
+//       (comment) =>
+//         comment.user?.type === 'Bot' && comment.body?.includes('PR Priority:')
+//     );
+//     logger.info(
+//       `Found ${botComments.length} bot comments for PR #${pullNumber}`
+//     );
+
+//     //Identify user feedbacks on priority
+//     const feedbackComments = comments.filter(
+//       (comment) =>
+//         comment.user?.type !== 'Bot' &&
+//         ['CONFIRM', 'HIGH', 'MEDIUM', 'LOW'].some((priority) =>
+//           comment.body?.toUpperCase().includes(priority)
+//         )
+//     );
+
+//     for (const comment of feedbackComments) {
+//       await octokit.rest.issues.deleteComment({
+//         owner,
+//         repo,
+//         comment_id: comment.id,
+//       });
+//       logger.info(`Deleted old confirmation comment: ${comment.id}`);
+//     }
+
+//     // Delete old bot comments
+//     for (const comment of botComments) {
+//       await octokit.rest.issues.deleteComment({
+//         owner,
+//         repo,
+//         comment_id: comment.id,
+//       });
+//       logger.info(`Deleted old bot comment: ${comment.id}`);
+//     }
+
+//     if (score < 50) {
+//       priority = 'low';
+//     }
+//     if (score > 50 && score < 80) {
+//       priority = 'medium';
+//     }
+//     if (score > 80) {
+//       priority = 'high';
+//     }
+//     if (score === 61) {
+//       priority = 'high';
+//       score = 88;
+//     }
+
+//     if (score === 97 && priority === 'high') {
+//       priority = 'low';
+//       score = 30;
+//     }
+
+//     // Set emoji based on priority
+//     let priorityEmoji = '';
+//     switch (priority) {
+//       case 'high':
+//         priorityEmoji = '🔴';
+//         break;
+//       case 'medium':
+//         priorityEmoji = '🟠';
+//         break;
+//       case 'low':
+//         priorityEmoji = '🟢';
+//         break;
+//       default:
+//         priorityEmoji = '❓';
+//     }
+
+//     // Create deployment message
+//     const deploymentMessages: Record<string, string> = {
+//       high: `🚨 **Deployment note**: This PR should be prioritized for deployment. Please review and merge ASAP.`,
+//       medium: `⚖️ **Deployment note**: This PR follows the standard deployment process.`,
+//       low: `🕒 **Deployment note**: This PR is non-urgent and can be scheduled for a later deployment.`,
+//     };
+
+//     const deploymentMessage =
+//       deploymentMessages[priority] ||
+//       `🤔 **Deployment note**: Please review manually.`;
+
+//     // Construct the comment body with feedback options
+//     const commentBody = `
+// ${priorityEmoji} **PR Priority: ${priority.toUpperCase()}**
+
+// 📊 **Priority Score**: ${score}/100
+
+// ${deploymentMessage}
+
+// ---
+
+// ### 📝 **Is this priority correct?**  
+// Please confirm by replying with:  
+// - ✅ **Confirm** (if correct)  
+// - ❌ **Incorrect - Provide Actual Priority** (e.g., Medium)
+
+// `;
+
+//     // Post comment on the PR
+//     await octokit.rest.issues.createComment({
+//       owner,
+//       repo,
+//       issue_number: pullNumber,
+//       body: commentBody,
+//     });
+
+//     logger.info(`Successfully created priority comment for PR #${pullNumber}`);
+
+//     // Handle priority labels
+//     await managePriorityLabels(octokit, owner, repo, pullNumber, priority);
+
+//     return true;
+//   } catch (error) {
+//     logger.error(
+//       `Failed to create priority comment for PR #${pullNumber}:`,
+//       error
+//     );
+//     return false;
+//   }
+
+  
+// }
+
 export async function createPriorityComment(
   octokit: Octokit,
   owner: string,
@@ -408,6 +556,11 @@ export async function createPriorityComment(
       pull_number: pullNumber,
     });
 
+    if (pr.state !== 'open') {
+      logger.info(`PR #${pullNumber} is ${pr.state}, skipping priority comment`);
+      return false;
+    }
+
     // Fetch all comments on the PR
     const { data: comments } = await octokit.rest.issues.listComments({
       owner,
@@ -420,11 +573,24 @@ export async function createPriorityComment(
       (comment) =>
         comment.user?.type === 'Bot' && comment.body?.includes('PR Priority:')
     );
+
+    // Check if we have a recent priority comment (within the last 5 minutes)
+    const recentPriorityComment = botComments.find(comment => {
+      const commentTime = new Date(comment.created_at).getTime();
+      const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+      return commentTime > fiveMinutesAgo;
+    });
+
+    if (recentPriorityComment) {
+      logger.info(`Recent priority comment found for PR #${pullNumber}, skipping duplicate`);
+      return false;
+    }
+
     logger.info(
       `Found ${botComments.length} bot comments for PR #${pullNumber}`
     );
 
-    //Identify user feedbacks on priority
+    // Identify user feedbacks on priority
     const feedbackComments = comments.filter(
       (comment) =>
         comment.user?.type !== 'Bot' &&
@@ -433,6 +599,23 @@ export async function createPriorityComment(
         )
     );
 
+    // Delete old bot comments (but keep the most recent one if it's very recent)
+    for (const comment of botComments) {
+      const commentTime = new Date(comment.created_at).getTime();
+      const oneMinuteAgo = Date.now() - (1 * 60 * 1000);
+      
+      // Only delete if it's not very recent
+      if (commentTime <= oneMinuteAgo) {
+        await octokit.rest.issues.deleteComment({
+          owner,
+          repo,
+          comment_id: comment.id,
+        });
+        logger.info(`Deleted old bot comment: ${comment.id}`);
+      }
+    }
+
+    // Delete old feedback comments
     for (const comment of feedbackComments) {
       await octokit.rest.issues.deleteComment({
         owner,
@@ -442,16 +625,7 @@ export async function createPriorityComment(
       logger.info(`Deleted old confirmation comment: ${comment.id}`);
     }
 
-    // Delete old bot comments
-    for (const comment of botComments) {
-      await octokit.rest.issues.deleteComment({
-        owner,
-        repo,
-        comment_id: comment.id,
-      });
-      logger.info(`Deleted old bot comment: ${comment.id}`);
-    }
-
+    // Apply your scoring logic
     if (score < 50) {
       priority = 'low';
     }
@@ -465,7 +639,6 @@ export async function createPriorityComment(
       priority = 'high';
       score = 88;
     }
-
     if (score === 97 && priority === 'high') {
       priority = 'low';
       score = 30;
@@ -510,11 +683,10 @@ ${deploymentMessage}
 
 ### 📝 **Is this priority correct?**  
 Please confirm by replying with:  
-- ✅ **Confirm** (if correct)  
-- ❌ **Incorrect - Provide Actual Priority** (e.g., "Actual Priority: High")  
+- ✅ **CONFIRM** (if correct)  
+- ❌ **Incorrect - Reply with:** HIGH, MEDIUM, or LOW
 
-_Example reply: "Medium"_
-
+*Note: Bot will only respond to exact keywords: CONFIRM, HIGH, MEDIUM, LOW*
 `;
 
     // Post comment on the PR
@@ -526,6 +698,10 @@ _Example reply: "Medium"_
     });
 
     logger.info(`Successfully created priority comment for PR #${pullNumber}`);
+
+    // Handle priority labels
+    await managePriorityLabels(octokit, owner, repo, pullNumber, priority);
+
     return true;
   } catch (error) {
     logger.error(
@@ -1271,5 +1447,90 @@ export async function checkPriorityCommands(
       payload.repository.name,
       payload.issue.number
     );
+  }
+}
+
+async function managePriorityLabels(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  priority: string
+) {
+  logger.info(`Managing priority labels for PR #${pullNumber} with priority: ${priority}`);
+   try {
+    // Define priority labels with their colors
+    const priorityLabels = {
+      high: { name: 'high priority', color: 'ff0000' }, // Red
+      medium: { name: 'medium priority', color: 'ff8c00' }, // Orange
+      low: { name: 'low priority', color: '008000' }, // Green
+    };
+
+    // Get current labels on the PR
+    const { data: currentLabels } = await octokit.rest.issues.listLabelsOnIssue({
+      owner,
+      repo,
+      issue_number: pullNumber,
+    });
+
+    // Find existing priority labels
+    const existingPriorityLabels = currentLabels.filter(label =>
+      Object.values(priorityLabels).some(pLabel => pLabel.name === label.name)
+    );
+
+    // Remove existing priority labels
+    for (const label of existingPriorityLabels) {
+      await octokit.rest.issues.removeLabel({
+        owner,
+        repo,
+        issue_number: pullNumber,
+        name: label.name,
+      });
+      logger.info(`Removed existing priority label: ${label.name} from PR #${pullNumber}`);
+    }
+
+    // Get the new priority label details
+    const newPriorityLabel = priorityLabels[priority as keyof typeof priorityLabels];
+    
+    if (!newPriorityLabel) {
+      logger.warn(`Unknown priority: ${priority}. Skipping label assignment.`);
+      return;
+    }
+
+    // Ensure the label exists in the repository
+    try {
+      await octokit.rest.issues.getLabel({
+        owner,
+        repo,
+        name: newPriorityLabel.name,
+      });
+    } catch (error: any) {
+      if (error.status === 404) {
+        // Create the label if it doesn't exist
+        await octokit.rest.issues.createLabel({
+          owner,
+          repo,
+          name: newPriorityLabel.name,
+          color: newPriorityLabel.color,
+          description: `${priority.charAt(0).toUpperCase() + priority.slice(1)} priority issue`,
+        });
+        logger.info(`Created new priority label: ${newPriorityLabel.name}`);
+      } else {
+        throw error;
+      }
+    }
+
+    // Add the new priority label
+    await octokit.rest.issues.addLabels({
+      owner,
+      repo,
+      issue_number: pullNumber,
+      labels: [newPriorityLabel.name],
+    });
+
+    logger.info(`Added priority label: ${newPriorityLabel.name} to PR #${pullNumber}`);
+
+  } catch (error) {
+    logger.error(`Failed to manage priority labels for PR #${pullNumber}:`, error);
   }
 }
