@@ -5,6 +5,7 @@ import { AppDataSource } from '../../server/server.ts';
 import { PrConflictAnalysisService } from '../../services/prConflictAnalysis.service.ts';
 import { CustomError, PRDiffFile } from '../../types/common';
 import { logger } from '../../utils/logger.ts';
+import { extractConflictedFiles } from '../../utils/detectConflictedFiles.ts'
 
 // Type for GitHub content response--------------------------------------------------------------------------------------------------------
 interface GitHubContentResponse {
@@ -163,9 +164,30 @@ export async function analyzePullRequest2(
     pull_number: prNumber,
   });
 
+  const conflictFiles = await extractConflictedFiles(
+    octokit,
+    owner,
+    repo,
+    prNumber
+  );
+  const conflictSet = new Set(conflictFiles); // Faster lookups
+
   const analysisDetails = [];
+
   for (const file of changedFiles.data) {
     const { filename, status } = file;
+
+    if (conflictSet.has(filename)) {
+      console.log(`Skipping ${filename} - Conflict detected.`);
+      continue;
+    }
+
+    if (status === 'added' || status === 'removed') {
+      console.log(
+        `Skipping ${filename} (${status}) - Not modified in both branches.`
+      );
+      continue;
+    }
 
     const baseVersionContent = await fetchFileContent(
       octokit,
@@ -188,19 +210,6 @@ export async function analyzePullRequest2(
       filename,
       headBranch
     );
-
-    // Log the three types of code versions for debugging purposes
-    // console.log(`Logging code versions for file: ${filename}`);
-    // console.log('Base Version Content:\n', baseVersionContent);
-    // console.log('Main Branch Content:\n', mainBranchContent);
-    // console.log('PR Branch Content:\n', prBranchContent);
-
-    if (status === 'added' || status === 'removed') {
-      console.log(
-        `Skipping ${filename} (${status}) - Not modified in both branches.`
-      );
-      continue;
-    }
 
     if (!baseVersionContent || !prBranchContent || !mainBranchContent) {
       console.log(
@@ -274,7 +283,7 @@ export async function analyzeConflicts(
     console.log(`Analyzing file: ${file.filename}`);
 
     const prompt = `
-You are an expert code reviewer analyzing semantic merge conflicts in a Git repository. Analyze the following changes for semantic merge conflicts.
+You are an expert code reviewer analyzing semantic merge conflicts in a Git repository. Analyze the following changes for semantic merge conflicts that could end in build failures or runtime errors.
 
 Base Branch (Common Ancestor):
 ${file.baseVersionContent}
@@ -288,7 +297,7 @@ ${file.mainBranchContent}
 Return a JSON object with:
 {
 "conflict": "yes" or "no",
-"explanation": "a comprehensive description including the reason and relevant code snippets of the places where the semantic conflict occurs"
+"explanation": "a brief explanation of the reason and the code snippets of the area of the semantic conflict"
 }
 
 Do not format the response with triple backticks (\`\`\`) or add \`json\` tags.
