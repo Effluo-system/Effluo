@@ -1449,6 +1449,7 @@ export async function checkPriorityCommands(
   }
 }
 
+// Updated managePriorityLabels function with intelligent label management
 async function managePriorityLabels(
   octokit: Octokit,
   owner: string,
@@ -1457,13 +1458,22 @@ async function managePriorityLabels(
   priority: string
 ) {
   logger.info(`Managing priority labels for PR #${pullNumber} with priority: ${priority}`);
-   try {
+  
+  try {
     // Define priority labels with their colors
     const priorityLabels = {
       high: { name: 'high priority', color: 'ff0000' }, // Red
       medium: { name: 'medium priority', color: 'ff8c00' }, // Orange
       low: { name: 'low priority', color: '008000' }, // Green
     };
+
+    // Get the new priority label details
+    const newPriorityLabel = priorityLabels[priority as keyof typeof priorityLabels];
+    
+    if (!newPriorityLabel) {
+      logger.warn(`Unknown priority: ${priority}. Skipping label assignment.`);
+      return;
+    }
 
     // Get current labels on the PR
     const { data: currentLabels } = await octokit.rest.issues.listLabelsOnIssue({
@@ -1477,57 +1487,66 @@ async function managePriorityLabels(
       Object.values(priorityLabels).some(pLabel => pLabel.name === label.name)
     );
 
-    // Remove existing priority labels
-    for (const label of existingPriorityLabels) {
+    // Check if the correct label is already applied
+    const hasCorrectLabel = existingPriorityLabels.some(label => 
+      label.name === newPriorityLabel.name
+    );
+
+    if (hasCorrectLabel && existingPriorityLabels.length === 1) {
+      logger.info(`PR #${pullNumber} already has the correct priority label: ${newPriorityLabel.name}`);
+      return; // No changes needed
+    }
+
+    // Remove only the incorrect priority labels
+    const labelsToRemove = existingPriorityLabels.filter(label => 
+      label.name !== newPriorityLabel.name
+    );
+
+    for (const label of labelsToRemove) {
       await octokit.rest.issues.removeLabel({
         owner,
         repo,
         issue_number: pullNumber,
         name: label.name,
       });
-      logger.info(`Removed existing priority label: ${label.name} from PR #${pullNumber}`);
+      logger.info(`Removed incorrect priority label: ${label.name} from PR #${pullNumber}`);
     }
 
-    // Get the new priority label details
-    const newPriorityLabel = priorityLabels[priority as keyof typeof priorityLabels];
-    
-    if (!newPriorityLabel) {
-      logger.warn(`Unknown priority: ${priority}. Skipping label assignment.`);
-      return;
-    }
-
-    // Ensure the label exists in the repository
-    try {
-      await octokit.rest.issues.getLabel({
-        owner,
-        repo,
-        name: newPriorityLabel.name,
-      });
-    } catch (error: any) {
-      if (error.status === 404) {
-        // Create the label if it doesn't exist
-        await octokit.rest.issues.createLabel({
+    // Add the new priority label only if it's not already there
+    if (!hasCorrectLabel) {
+      // Ensure the label exists in the repository
+      try {
+        await octokit.rest.issues.getLabel({
           owner,
           repo,
           name: newPriorityLabel.name,
-          color: newPriorityLabel.color,
-          description: `${priority.charAt(0).toUpperCase() + priority.slice(1)} priority issue`,
         });
-        logger.info(`Created new priority label: ${newPriorityLabel.name}`);
-      } else {
-        throw error;
+      } catch (error: any) {
+        if (error.status === 404) {
+          // Create the label if it doesn't exist
+          await octokit.rest.issues.createLabel({
+            owner,
+            repo,
+            name: newPriorityLabel.name,
+            color: newPriorityLabel.color,
+            description: `${priority.charAt(0).toUpperCase() + priority.slice(1)} priority issue`,
+          });
+          logger.info(`Created new priority label: ${newPriorityLabel.name}`);
+        } else {
+          throw error;
+        }
       }
+
+      // Add the new priority label
+      await octokit.rest.issues.addLabels({
+        owner,
+        repo,
+        issue_number: pullNumber,
+        labels: [newPriorityLabel.name],
+      });
+
+      logger.info(`Added priority label: ${newPriorityLabel.name} to PR #${pullNumber}`);
     }
-
-    // Add the new priority label
-    await octokit.rest.issues.addLabels({
-      owner,
-      repo,
-      issue_number: pullNumber,
-      labels: [newPriorityLabel.name],
-    });
-
-    logger.info(`Added priority label: ${newPriorityLabel.name} to PR #${pullNumber}`);
 
   } catch (error) {
     logger.error(`Failed to manage priority labels for PR #${pullNumber}:`, error);
