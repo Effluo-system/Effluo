@@ -311,9 +311,15 @@ Strictly adhere to all guidelines.
 
       const raw = result.response.text();
 
+      let cleanRaw = raw.trim();
+
+      if (cleanRaw.startsWith('```') && cleanRaw.endsWith('```')) {
+        cleanRaw = cleanRaw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+
       let responseData;
       try {
-        responseData = JSON.parse(raw);
+        responseData = JSON.parse(cleanRaw);
       } catch (jsonError) {
         console.error(
           `JSON parsing error for file ${file.filename}:`,
@@ -461,6 +467,14 @@ export async function handleConflictAnalysis(
     });
 
     await postAIValidationForm(octokit, owner, repo, prNumber);
+
+    await octokit.rest.issues.addLabels({
+      owner: owner,
+      repo: repo,
+      issue_number: prNumber,
+      labels: ['Semantic Merge Conflict'],
+    });
+
   } else {
     logger.info(`No semantic conflicts detected for PR #${prNumber}`);
     await PrConflictAnalysisService.trackAnalysis(
