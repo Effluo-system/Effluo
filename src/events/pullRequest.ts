@@ -61,12 +61,30 @@ app.webhooks.on('pull_request.opened', async ({ octokit, payload }) => {
       logger.error(customError.message || 'An unknown error occurred');
     }
   }
+    try {
+    await prioritizePullRequest(
+      octokit as any,
+      payload.repository.owner.login,
+      payload.repository.name,
+      payload.pull_request.number
+    );
+  } catch (error) {
+    const customError = error as CustomError;
+    if (customError.response) {
+      logger.error(
+        `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
+      );
+    } else {
+      logger.error(error);
+    }
+  }
 });
 
 app.webhooks.on('pull_request.reopened', async ({ octokit, payload }) => {
   logger.info(
     `Received a pull request event for #${payload.pull_request.number}`
   );
+  
   try {
     await PrConflictAnalysisService.resetValidationFormPosted(
       payload.pull_request.number,
@@ -123,6 +141,23 @@ app.webhooks.on('pull_request.reopened', async ({ octokit, payload }) => {
       );
     } else {
       logger.error(customError.message || 'An unknown error occurred');
+    }
+  }
+  try {
+    await prioritizePullRequest(
+      octokit as any,
+      payload.repository.owner.login,
+      payload.repository.name,
+      payload.pull_request.number
+    );
+  } catch (error) {
+    const customError = error as CustomError;
+    if (customError.response) {
+      logger.error(
+        `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
+      );
+    } else {
+      logger.error(error);
     }
   }
 });
@@ -191,25 +226,25 @@ app.webhooks.on('pull_request.closed', async ({ octokit, payload }) => {
   }
 });
 
-app.webhooks.on('pull_request', async ({ octokit, payload }) => {
-  logger.info(
-    `Received a pull request event for #${payload.pull_request.number}`
-  );
-  try {
-    await prioritizePullRequest(
-      octokit as any,
-      payload.repository.owner.login,
-      payload.repository.name,
-      payload.pull_request.number
-    );
-  } catch (error) {
-    const customError = error as CustomError;
-    if (customError.response) {
-      logger.error(
-        `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
-      );
-    } else {
-      logger.error(error);
-    }
-  }
-});
+// app.webhooks.on('pull_request', async ({ octokit, payload }) => {
+//   logger.info(
+//     `Received a pull request event for #${payload.pull_request.number}`
+//   );
+//   try {
+//     await prioritizePullRequest(
+//       octokit as any,
+//       payload.repository.owner.login,
+//       payload.repository.name,
+//       payload.pull_request.number
+//     );
+//   } catch (error) {
+//     const customError = error as CustomError;
+//     if (customError.response) {
+//       logger.error(
+//         `Error! Status: ${customError.response.status}. Message: ${customError.response.data.message}`
+//       );
+//     } else {
+//       logger.error(error);
+//     }
+//   }
+// });
