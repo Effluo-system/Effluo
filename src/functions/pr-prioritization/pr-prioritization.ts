@@ -685,7 +685,6 @@ ${deploymentMessage}
 Please confirm by replying with:  
 - ✅ **CONFIRM** (if correct)  
 - ❌ **Incorrect - Reply with:** HIGH, MEDIUM, or LOW
-
 *Note: Bot will only respond to exact keywords: CONFIRM, HIGH, MEDIUM, LOW*
 `;
 
